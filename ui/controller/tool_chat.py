@@ -795,6 +795,12 @@ class ChatTool():
             self.worker.deleteLater()
             self.worker = None
 
+    def apply_config(self):
+        """刷新聊天相关的配置缓存"""
+        self.user_name = config.ui.user_name
+        self.ai_name = AI_NAME
+        self.streaming_mode = config.system.stream_mode
+
     # ------------------------------
     # 属性访问器
     # ------------------------------
@@ -808,3 +814,6 @@ from ..utils.lazy import lazy
 @lazy
 def chat():
     return ChatTool(config.window)
+
+def apply_config():
+    chat().apply_config()
