@@ -121,6 +121,11 @@ class Live2DWidget(QOpenGLWidget):
 
     def paintGL(self):
         """绘制Live2D模型"""
+        # 获取父容器的背景透明度
+        bg_alpha = 200
+        if self.parent():
+            bg_alpha = getattr(self.parent(), 'bg_alpha', 200)
+
         # 检查待加载的模型
         if self._pending_load_model:
             model_path = self._pending_load_model
@@ -147,7 +152,7 @@ class Live2DWidget(QOpenGLWidget):
         if self.renderer and self.renderer.has_model():
             try:
                 self.renderer.update()
-                self.renderer.draw()
+                self.renderer.draw(bg_alpha)
             except Exception as e:
                 logger.error(f"绘制失败: {e}")
 

@@ -269,13 +269,20 @@ class Live2DRenderer:
         except Exception as e:
             self._handle_operation_error('_update_errors', e, '更新')
 
-    def draw(self):
+    def draw(self, bg_alpha=None):
         """绘制模型"""
         if not self.has_model():
             return
 
         try:
-            live2d.clearBuffer()
+            # 设置背景清除颜色并手动清除
+            if bg_alpha is not None:
+                from OpenGL.GL import glClearColor, glClear, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT
+                glClearColor(17/255.0, 17/255.0, 17/255.0, bg_alpha / 255.0)
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+            else:
+                live2d.clearBuffer()
+
             self.model.Draw()
             self._draw_errors = 0
         except Exception as e:
