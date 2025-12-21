@@ -138,8 +138,9 @@ class LLMService:
                             lines = data.split('\n')
                             for line in lines:
                                 line = line.strip()
-                                if line.startswith('data: '):
-                                    data_str = line[6:]
+                                # 兼容 "data: " 和 "data:" 两种格式
+                                if line.startswith('data:'):
+                                    data_str = line[5:].lstrip()  # 移除 "data:" 后的可选空格
                                     if data_str == '[DONE]':
                                         return
                                     try:
