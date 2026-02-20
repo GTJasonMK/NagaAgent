@@ -2,6 +2,7 @@
 import { useWindowSize } from '@vueuse/core'
 import { computed } from 'vue'
 import { useLink } from 'vue-router'
+import { CONFIG } from '@/utils/config'
 import brain from '@/assets/icons/brain.png'
 import chip from '@/assets/icons/chip.png'
 import naga from '@/assets/icons/naga.png'
@@ -16,6 +17,11 @@ const { height } = useWindowSize()
 const scale = computed(() => height.value / 720)
 
 const { rx, ry, tx, ty } = useParallax({ rotateX: 5, rotateY: 4, translateX: 15, translateY: 10, invertRotate: true })
+
+function enterFloatingMode() {
+  CONFIG.value.floating.enabled = true
+  window.electronAPI?.floating.enter()
+}
 </script>
 
 <template>
@@ -44,21 +50,33 @@ const { rx, ry, tx, ty } = useParallax({ rotateX: 5, rotateY: 4, translateX: 15,
         <ArkButton :icon="brain" title="记忆<br>云海" @click="useLink({ to: '/mind' }).navigate" />
         <ArkButton :icon="toolkit" title="技能<br>工坊" @click="useLink({ to: '/skill' }).navigate" />
       </div>
-      <div class="grid grid-cols-2">
-        <div class="flex flex-col">
+      <div class="grid grid-cols-2 min-w-0">
+        <div class="flex flex-col min-w-0 relative">
+          <!-- 悬浮按钮 -->
+          <button class="float-btn absolute -left-16 top-0 bottom-0 w-12 flex flex-col items-center justify-center bg-white border-none shadow backdrop-blur-md transition hover:brightness-105" @click="enterFloatingMode">
+            <span class="text-lg font-serif font-bold text-black">悬浮</span>
+            <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="9" stroke="#B9B9B9" stroke-width="1.5"/>
+              <path d="M12 4C12 4 6 8 6 12C6 16 12 20 12 20" stroke="#B9B9B9" stroke-width="1.2" stroke-linecap="round" opacity="0.8"/>
+              <path d="M12 4C12 4 18 8 18 12C18 16 12 20 12 20" stroke="#B9B9B9" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+              <ellipse cx="9" cy="10" rx="1.5" ry="2" fill="#B9B9B9" opacity="0.6"/>
+            </svg>
+
+          </button>
+          
           <div class="bg-#363837 text-white p-2 text-sm">
             参数设置
           </div>
-          <div class="grow grid grid-cols-2 font-serif font-bold lh-none">
-            <ArkButton @click="useLink({ to: '/model' }).navigate">
+          <div class="grow grid grid-cols-2 font-serif font-bold lh-none min-w-0">
+            <ArkButton class="min-w-0" @click="useLink({ to: '/model' }).navigate">
               <div class="size-full text-lg">模型链接</div>
             </ArkButton>
-            <ArkButton @click="useLink({ to: '/memory' }).navigate">
+            <ArkButton class="min-w-0" @click="useLink({ to: '/memory' }).navigate">
               <div class="size-full text-lg">记忆链接</div>
             </ArkButton>
           </div>
         </div>
-        <ArkButton :icon="chip" title="终端<br>设置" @click="useLink({ to: '/config' }).navigate" />
+        <ArkButton class="min-w-0" :icon="chip" title="终端<br>设置" @click="useLink({ to: '/config' }).navigate" />
       </div>
       <div class="grid grid-cols-2 -translate-x-1/5">
         <ArkButton class="market-btn" :icon="market" title="枢机<br>集市" />
