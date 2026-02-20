@@ -19,6 +19,7 @@ const router = createRouter({
     { path: '/mind', component: () => import('@/views/MindView.vue') },
     { path: '/skill', component: () => import('@/views/SkillView.vue') },
     { path: '/config', component: () => import('@/views/ConfigView.vue') },
+    { path: '/music', component: () => import('@/views/MusicView.vue') },
   ],
 })
 
