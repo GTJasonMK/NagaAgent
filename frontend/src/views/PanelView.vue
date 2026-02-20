@@ -6,8 +6,11 @@ import brain from '@/assets/icons/brain.png'
 import chip from '@/assets/icons/chip.png'
 import naga from '@/assets/icons/naga.png'
 import toolkit from '@/assets/icons/toolkit.png'
+import market from '@/assets/icons/market.svg'
 import ArkButton from '@/components/ArkButton.vue'
 import { useParallax } from '@/composables/useParallax'
+
+const musicBoxIcon = '/assets/Layer 8 (merged).png'
 
 const { height } = useWindowSize()
 const scale = computed(() => height.value / 720)
@@ -18,7 +21,7 @@ const { rx, ry, tx, ty } = useParallax({ rotateX: 5, rotateY: 4, translateX: 15,
 <template>
   <div class="flex flex-col items-start justify-center px-1/16">
     <div
-      class="grid grid-rows-3 gap-3 *:gap-3 will-change-transform" :style="{
+      class="grid grid-rows-4 gap-3 *:gap-3 will-change-transform" :style="{
         transformOrigin: 'left',
         transform: `perspective(1000px) rotateX(${rx}deg) rotateY(${8 + ry}deg) translate(${tx}px, ${ty}px) scale(${scale})`,
       }"
@@ -57,6 +60,17 @@ const { rx, ry, tx, ty } = useParallax({ rotateX: 5, rotateY: 4, translateX: 15,
         </div>
         <ArkButton :icon="chip" title="终端<br>设置" @click="useLink({ to: '/config' }).navigate" />
       </div>
+      <div class="grid grid-cols-2 -translate-x-1/5">
+        <ArkButton class="market-btn" :icon="market" title="枢机<br>集市" />
+        <ArkButton class="music-btn" :icon="musicBoxIcon" title="音律坊" @click="useLink({ to: '/music' }).navigate" />
+      </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.market-btn :deep(img),
+.music-btn :deep(img) {
+  filter: grayscale(1) brightness(0.78) opacity(0.9);
+}
+</style>
