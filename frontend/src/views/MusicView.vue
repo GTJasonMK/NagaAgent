@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, onActivated } from 'vue'
+import { useRouter } from 'vue-router'
 import BoxContainer from '@/components/BoxContainer.vue'
 import musicBox from '@/assets/icons/music-box.svg'
+
+const router = useRouter()
 
 interface Track {
   id: number
@@ -10,20 +13,59 @@ interface Track {
   src: string
 }
 
-const tracks = ref<Track[]>([
-  {
-    id: 1,
-    title: '日常的小曲 · Everyday Tune',
-    duration: '03:24',
-    src: '/voices/background/8.日常的小曲.mp3',
-  },
-  {
-    id: 2,
-    title: '快乐的小曲 · Happy Tune',
-    duration: '03:07',
-    src: '/voices/background/9.快乐的小曲.mp3',
-  },
-])
+// 从 localStorage 加载播放列表
+const bgmGlob = import.meta.glob('/public/voices/background/*.mp3', { query: '?url', import: 'default' })
+
+function parseDisplayName(filename: string): string {
+  const name = filename.replace(/\.mp3$/i, '')
+  const match = name.match(/^\d+\.(.+)$/)
+  return match ? match[1] : name
+}
+
+async function loadPlaylist(): Promise<Track[]> {
+  const saved = localStorage.getItem('music-playlist')
+  if (saved != null && saved !== '') {
+    try {
+      const savedIds = JSON.parse(saved) as string[]
+      const allSongs: Array<{ id: string, filename: string, src: string }> = []
+      for (const path of Object.keys(bgmGlob)) {
+        const filename = path.replace('/public/voices/background/', '')
+        allSongs.push({ id: filename, filename, src: `/voices/background/${filename}` })
+      }
+      const playlist = savedIds
+        .map(id => allSongs.find(s => s.id === id))
+        .filter((s): s is { id: string, filename: string, src: string } => s !== undefined)
+        .map((s, idx) => ({
+          id: idx + 1,
+          title: parseDisplayName(s.filename),
+          duration: '03:24',
+          src: s.src,
+        }))
+      // 已保存过的列表（含空列表）直接返回，不再使用默认列表
+      return playlist
+    }
+    catch {
+      // 解析失败时 fallback 到默认列表
+    }
+  }
+  // 首次使用或从未保存过时使用默认列表
+  return [
+    {
+      id: 1,
+      title: '日常的小曲 · Everyday Tune',
+      duration: '03:24',
+      src: '/voices/background/8.日常的小曲.mp3',
+    },
+    {
+      id: 2,
+      title: '快乐的小曲 · Happy Tune',
+      duration: '03:07',
+      src: '/voices/background/9.快乐的小曲.mp3',
+    },
+  ]
+}
+
+const tracks = ref<Track[]>([])
 
 const currentIndex = ref(0)
 const isPlaying = ref(false)
@@ -58,7 +100,7 @@ function setupAudioForTrack() {
 }
 
 function togglePlay() {
-  if (!audio.value) return
+  if (!audio.value || !tracks.value.length) return
 
   if (audio.value.paused) {
     audio.value.play().then(() => {
@@ -118,7 +160,10 @@ function togglePlayMode() {
     playMode.value = 'list'
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // 加载播放列表
+  tracks.value = await loadPlaylist()
+
   audio.value = new Audio()
   if (!audio.value)
     return
@@ -149,6 +194,17 @@ onBeforeUnmount(() => {
 watch(currentTrack, () => {
   setupAudioForTrack()
 })
+
+// 使用 onActivated 在从编辑页面返回时重新加载播放列表
+import { onActivated } from 'vue'
+onActivated(async () => {
+  const newPlaylist = await loadPlaylist()
+  if (JSON.stringify(newPlaylist.map(t => t.src)) !== JSON.stringify(tracks.value.map(t => t.src))) {
+    tracks.value = newPlaylist
+    currentIndex.value = 0
+    setupAudioForTrack()
+  }
+})
 </script>
 
 <template>
@@ -178,7 +234,7 @@ watch(currentTrack, () => {
             <button class="mode-btn" title="点击切换播放顺序" @click="togglePlayMode">
               {{ playModeLabel }}
             </button>
-            <button class="edit-btn" title="编辑歌单（预留功能）">
+            <button class="edit-btn" title="编辑歌单" @click="router.push('/music/edit')">
               编辑歌单
             </button>
           </div>
@@ -212,6 +268,9 @@ watch(currentTrack, () => {
                 {{ track.duration }}
               </div>
             </div>
+            <div v-if="tracks.length === 0" class="music-track-empty">
+              歌曲等待打捞
+            </div>
           </div>
         </div>
       </div>
@@ -221,21 +280,21 @@ watch(currentTrack, () => {
         <!-- 控制与进度条 -->
         <div class="controls">
           <div class="buttons">
-            <button class="round-btn" title="上一首" @click="prev">
+            <button class="round-btn" title="上一首" :disabled="!tracks.length" @click="prev">
               〈〈
             </button>
-            <button class="play-btn" :class="{ playing: isPlaying }" @click="togglePlay">
+            <button class="play-btn" :class="{ playing: isPlaying }" :disabled="!tracks.length" @click="togglePlay">
               <span v-if="!isPlaying">▶</span>
               <span v-else>⏸</span>
             </button>
-            <button class="round-btn" title="下一首" @click="next">
+            <button class="round-btn" title="下一首" :disabled="!tracks.length" @click="next">
               〉〉
             </button>
           </div>
 
           <div class="progress-area">
             <div class="time left">
-              {{ new Date(currentTime * 1000).toISOString().substring(14, 19) }}
+              {{ tracks.length ? new Date(currentTime * 1000).toISOString().substring(14, 19) : '00:00' }}
             </div>
             <div class="bar">
               <div class="bar-bg" />
@@ -243,14 +302,14 @@ watch(currentTrack, () => {
               <div class="bar-thumb" :style="{ left: `${progress}%` }" />
             </div>
             <div class="time right">
-              {{ currentTrack?.duration }}
+              {{ currentTrack?.duration ?? '00:00' }}
             </div>
           </div>
         </div>
 
         <div class="track-title">
           正在播放：
-          <span class="name">{{ currentTrack?.title }}</span>
+          <span class="name">{{ currentTrack?.title ?? (tracks.length ? '' : '暂无') }}</span>
         </div>
       </div>
     </div>
@@ -316,6 +375,7 @@ watch(currentTrack, () => {
   gap: 6px;
   margin-top: 8px;
   font-size: 11px;
+  min-height: 100px;
 }
 
 .track-row {
@@ -353,6 +413,22 @@ watch(currentTrack, () => {
 
 .track-row.active .title {
   color: #e5e7eb;
+}
+
+.music-track-empty {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 12px;
+  min-height: 80px;
+  color: rgba(148, 163, 184, 0.6);
+  font-size: 12px;
+}
+
+.buttons button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .music-player {

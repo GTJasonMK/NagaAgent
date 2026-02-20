@@ -20,6 +20,7 @@ const router = createRouter({
     { path: '/skill', component: () => import('@/views/SkillView.vue') },
     { path: '/config', component: () => import('@/views/ConfigView.vue') },
     { path: '/music', component: () => import('@/views/MusicView.vue') },
+    { path: '/music/edit', component: () => import('@/views/MusicEditView.vue') },
   ],
 })
 
