@@ -1,202 +1,160 @@
 {
   "system": {
-    "version": "5.0.0",  // 系统版本号
-    "ai_name": "娜迦日达", // AI助手名称
-    "voice_enabled": true, // 是否启用语音功能
-    "stream_mode": true, // 是否启用流式响应
-    "debug": false, // 是否启用调试模式
-    "log_level": "INFO", // 日志级别: DEBUG, INFO, WARNING, ERROR
-    "save_prompts": true // 是否保存提示词到日志
+    "version": "5.0.0",
+    "voice_enabled": true,
+    "stream_mode": true,
+    "debug": false,
+    "log_level": "INFO",
+    "save_prompts": true
   },
   "api": {
-    "api_key": "your-api-key-here", // LLM API密钥
-    "base_url": "https://api.deepseek.com/v1", // API基础URL
-    "model": "deepseek-v3.2", // 使用的模型名称
-    "temperature": 0.7, // 生成温度 (0.0-2.0)
-    "max_tokens": 8192, // 最大token数
-    "max_history_rounds": 10, // 最大历史对话轮数
-    "persistent_context": true, // 是否持久化上下文
-    "context_load_days": 3, // 上下文加载天数
-    "context_parse_logs": true, // 是否解析日志中的上下文
-    "applied_proxy": false // 是否应用代理
+    "api_key": "your-api-key-here",
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-v3.2",
+    "max_tokens": 8192,
+    "context_load_days": 3
   },
   "api_server": {
-    "enabled": true, // 是否启用API服务器
-    "host": "127.0.0.1", // 服务器主机地址
-    "port": 8000, // 服务器端口
-    "auto_start": true, // 是否自动启动
-    "docs_enabled": true // 是否启用API文档
+    "enabled": true,
+    "port": 8000,
+    "docs_enabled": true
   },
   "agentserver": {
-    "enabled": true, // 是否启用代理服务器
-    "host": "127.0.0.1", // 代理服务器主机
-    "port": 8001, // 代理服务器端口
-    "auto_start": true // 是否自动启动
+    "enabled": true
   },
   "mcpserver": {
-    "enabled": true, // 是否启用MCP服务器
-    "host": "127.0.0.1", // MCP服务器主机
-    "port": 8003, // MCP服务器端口
-    "auto_start": true, // 是否自动启动
-    "agent_discovery": true // 是否启用代理发现
+    "enabled": true,
+    "agent_discovery": true
   },
   "grag": {
-    "enabled": true, // 是否启用知识图谱
-    "auto_extract": true, // 是否自动提取
-    "context_length": 5, // 上下文长度
-    "similarity_threshold": 0.6, // 相似度阈值
-    "neo4j_uri": "neo4j://127.0.0.1:7687", // Neo4j数据库URI
-    "neo4j_user": "neo4j", // Neo4j用户名
-    "neo4j_password": "your-neo4j-password", // Neo4j密码
-    "neo4j_database": "neo4j", // Neo4j数据库名
-    "extraction_timeout": 12, // 提取超时时间(秒)
-    "extraction_retries": 2, // 提取重试次数
-    "base_timeout": 15 // 基础超时时间(秒)
+    "enabled": true,
+    "auto_extract": true,
+    "context_length": 5,
+    "neo4j_user": "neo4j",
+    "neo4j_database": "neo4j",
+    "extraction_timeout": 12,
+    "extraction_retries": 2,
+    "base_timeout": 15
   },
   "handoff": {
-    "max_loop_stream": 5, // 流式模式最大循环次数
-    "max_loop_non_stream": 5, // 非流式模式最大循环次数
-    "show_output": false // 是否显示输出
+    "max_loop_stream": 5
   },
   "browser": {
-    "playwright_headless": false // Playwright是否无头模式
+    "playwright_headless": false
   },
   "tts": {
-    "api_key": "", // TTS API密钥
-    "port": 5048, // TTS服务端口
-    "default_voice": "zh-CN-XiaoxiaoNeural", // 默认语音
-    "default_format": "mp3", // 默认音频格式
-    "default_speed": 1.0, // 默认语速
-    "default_language": "zh-CN", // 默认语言
-    "remove_filter": false, // 是否移除过滤器
-    "expand_api": true, // 是否扩展API
-    "require_api_key": false // 是否需要API密钥
+    "api_key": "",
+    "port": 5048,
+    "default_voice": "zh-CN-XiaoxiaoNeural",
+    "default_format": "mp3",
+    "default_speed": 1.0,
+    "remove_filter": false,
+    "require_api_key": false
   },
   "game": {
-    "enabled": false, // 是否启用游戏功能
-    "skip_on_error": true // 出错时是否跳过
+    "enabled": false,
+    "skip_on_error": true
   },
   "voice_realtime": {
-    "enabled": false, // 是否启用实时语音
-    "provider": "qwen", // 语音提供商
-    "api_key": "your-dashscope-api-key-here", // DashScope API密钥
-    "model": "qwen3-omni-flash-realtime", // 实时语音模型
-    "tts_model": "qwen-tts-realtime", // TTS模型
-    "asr_model": "qwen3-asr-realtime", // ASR模型
-    "voice": "Cherry", // 语音名称
-    "voice_mode": "auto", // 语音模式
-    "tts_voice": "zh-CN-XiaoyiNeural", // TTS语音
-    "input_sample_rate": 16000, // 输入采样率
-    "output_sample_rate": 24000, // 输出采样率
-    "chunk_size_ms": 200, // 音频块大小(毫秒)
-    "vad_threshold": 0.02, // 语音活动检测阈值
-    "echo_suppression": true, // 是否启用回声抑制
-    "min_user_interval": 2.0, // 最小用户间隔(秒)
-    "cooldown_duration": 1.0, // 冷却持续时间(秒)
-    "max_user_speech": 30.0, // 最大用户语音时长(秒)
-    "debug": false, // 是否启用调试
-    "integrate_with_memory": true, // 是否与记忆集成
-    "show_in_chat": true, // 是否在聊天中显示
-    "use_api_server": true // 是否使用API服务器
+    "enabled": false,
+    "provider": "qwen",
+    "model": "qwen3-omni-flash-realtime",
+    "tts_model": "qwen-tts-realtime",
+    "asr_model": "qwen3-asr-realtime",
+    "voice": "Cherry",
+    "voice_mode": "auto",
+    "tts_voice": "zh-CN-XiaoyiNeural",
+    "input_sample_rate": 16000,
+    "vad_threshold": 0.02,
+    "min_user_interval": 2.0,
+    "cooldown_duration": 1.0,
+    "max_user_speech": 30.0,
+    "debug": false,
+    "integrate_with_memory": true,
+    "use_api_server": true
   },
   "weather": {
-    "api_key": "your-weather-api-key-or-leave-empty" // 天气API密钥
+    "api_key": "your-weather-api-key-or-leave-empty"
   },
   "mqtt": {
-    "enabled": false, // 是否启用MQTT
-    "broker": "mqtt-broker-address", // MQTT代理地址
-    "port": 1883, // MQTT端口
-    "topic": "naga/agent/topic", // MQTT主题
-    "client_id": "naga-agent-client", // MQTT客户端ID
-    "username": "mqtt-username", // MQTT用户名
-    "password": "mqtt-password", // MQTT密码
-    "keepalive": 60, // 保持连接时间(秒)
-    "qos": 1 // 服务质量等级
+    "enabled": false,
+    "broker": "mqtt-broker-address",
+    "port": 1883,
+    "topic": "naga/agent/topic",
+    "client_id": "naga-agent-client",
+    "username": "mqtt-username",
+    "keepalive": 60,
+    "qos": 1
   },
   "ui": {
-    "user_name": "用户", // 用户名称
-    "bg_alpha": 0.81, // 背景透明度
-    "window_bg_alpha": 128, // 窗口背景透明度
-    "mac_btn_size": 36, // Mac按钮大小
-    "mac_btn_margin": 16, // Mac按钮边距
-    "mac_btn_gap": 12, // Mac按钮间距
-    "animation_duration": 600 // 动画持续时间(毫秒)
+    "user_name": "用户",
+    "bg_alpha": 0.81,
+    "mac_btn_margin": 16,
+    "mac_btn_gap": 12,
+    "animation_duration": 600
   },
   "naga_portal": {
-    "portal_url": "https://naga.furina.chat/", // Naga门户URL
-    "username": "your-portal-username", // 门户用户名
-    "password": "your-portal-password" // 门户密码
+    "portal_url": "https://portal.example.com",
+    "username": "your-portal-username"
   },
   "online_search": {
-    "searxng_url": "https://searxng.pylindex.top", // SearXNG搜索URL
-    "engines": [ // 搜索引擎列表
+    "searxng_url": "https://searxng.example.com",
+    "engines": [
       "google"
     ],
-    "num_results": 5 // 搜索结果数量
+    "num_results": 5
   },
   "computer_control": {
-    "enabled": true, // 是否启用计算机控制
-    "model": "gemini-2.5-flash", // 视觉模型
-    "model_url": "https://open.bigmodel.cn/api/paas/v4", // 模型API URL
-    "api_key": "", // 模型API密钥
-    "grounding_model": "gemini-2.5-flash", // 基础模型
-    "grounding_url": "https://open.bigmodel.cn/api/paas/v4", // 基础模型URL
-    "grounding_api_key": "", // 基础模型API密钥
-    "screen_width": 1920, // 屏幕宽度
-    "screen_height": 1080, // 屏幕高度
-    "max_dim_size": 1920, // 最大尺寸
-    "dpi_awareness": true, // 是否启用DPI感知
-    "safe_mode": true // 是否启用安全模式
+    "enabled": true,
+    "model_url": "https://api.example.com",
+    "api_key": "",
+    "grounding_model": "gemini-2.5-flash",
+    "grounding_url": "https://api.example.com",
+    "grounding_api_key": "",
+    "screen_width": 1920,
+    "screen_height": 1080,
+    "max_dim_size": 1920,
+    "safe_mode": true
   },
   "guide_engine": {
-    "enabled": true, // 是否启用游戏攻略引擎
-    "gamedata_dir": "./data", // 游戏数据目录（存放各游戏的JSON数据文件）
-    "embedding_api_base_url": "", // OpenAI兼容Embedding API地址（如 https://api.openai.com/v1）
-    "embedding_api_key": "", // OpenAI兼容Embedding API密钥
-    "embedding_api_model": "text-embedding-3-small", // OpenAI兼容Embedding模型名
-    "game_guide_llm_api_base_url": "", // 攻略专用LLM API地址，需支持图片输入（留空回退到api.base_url）
-    "game_guide_llm_api_key": "", // 攻略专用LLM API密钥（留空回退到api.api_key）
-    "game_guide_llm_api_model": "", // 攻略专用LLM模型名，需支持图片输入（留空回退到api.model）
-    "game_guide_llm_api_type": "openai", // 攻略专用LLM API类型（openai/gemini）
-    "prompt_dir": "./guide_engine/game_prompts", // 游戏Prompt目录
-    "neo4j_uri": "neo4j://127.0.0.1:7687", // 攻略图谱Neo4j URI
-    "neo4j_user": "neo4j", // 攻略图谱Neo4j用户名
-    "neo4j_password": "your_password", // 攻略图谱Neo4j密码
-    "screenshot_monitor_index": 1, // 自动截图显示器索引
-    "auto_screenshot_on_guide": true // 攻略调用时默认自动截图
+    "enabled": true,
+    "gamedata_dir": "./data",
+    "embedding_api_model": "text-embedding-3-small",
+    "neo4j_uri": "neo4j://localhost:7687",
+    "neo4j_user": "neo4j",
+    "screenshot_monitor_index": 1
   },
   "memory_server": {
-    "url": "http://localhost:8004", // NagaMemory 服务地址
-    "token": null // 认证Token（Bearer），登录后自动设置
+    "url": "http://localhost:8000",
+    "token": null
   },
   "embedding": {
-    "model": "tongyi-embedding", // 嵌入模型名称
-    "api_base": "", // 嵌入模型API地址（留空回退到api.base_url）
-    "api_key": "" // 嵌入模型API密钥（留空回退到api.api_key）
+    "model": "tongyi-embedding",
+    "api_base": ""
   },
   "crawl4ai": {
-    "headless": true, // 是否无头模式
-    "timeout": 30000, // 超时时间(毫秒)
-    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36", // 用户代理
-    "viewport_width": 1280, // 视口宽度
-    "viewport_height": 720 // 视口高度
+    "headless": true,
+    "timeout": 30000,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    "viewport_width": 1280,
+    "viewport_height": 720
   },
   "live2d": {
-    "enabled": false, // 是否启用Live2D
-    "model_path": "ui/live2d_local/live2d_models/重音テト/重音テト.model3.json", // Live2D模型路径
-    "fallback_image": "ui/img/standby.png", // 备用图片
-    "auto_switch": true, // 是否自动切换
-    "animation_enabled": true, // 是否启用动画
-    "touch_interaction": true // 是否启用触摸交互
+    "enabled": false,
+    "model_path": "ui/live2d_local/live2d_models/重音テト/重音テト.model3.json",
+    "fallback_image": "ui/img/standby.png",
+    "auto_switch": true,
+    "animation_enabled": true,
+    "touch_interaction": true
   },
   "system_check": {
-    "passed": false, // 系统检查是否通过
-    "timestamp": "", // 检查时间戳
-    "python_version": "", // Python版本
-    "project_path": "" // 项目路径
+    "passed": false,
+    "timestamp": "",
+    "python_version": "",
+    "project_path": ""
   },
   "pypi": {
-    "token_name": "RTGS", // PyPI令牌名称
-    "api": "pypi-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" // PyPI API令牌
+    "token_name": "RTGS",
+    "api": "pypi-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
   }
 }
