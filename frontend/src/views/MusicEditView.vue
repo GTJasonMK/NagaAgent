@@ -21,7 +21,7 @@ const firstSelectedIndex = ref<number | null>(null)
 // 分页
 const currentPage = ref(1)
 const pageSize = 10
-const totalPages = computed(() => Math.ceil(availableSongs.value.length / pageSize))
+const totalPages = computed(() => Math.max(1, Math.ceil(availableSongs.value.length / pageSize)))
 const paginatedSongs = computed(() => {
   const start = (currentPage.value - 1) * pageSize
   return availableSongs.value.slice(start, start + pageSize)

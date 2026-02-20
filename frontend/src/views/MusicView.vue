@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import BoxContainer from '@/components/BoxContainer.vue'
 import musicBox from '@/assets/icons/music-box.svg'
+
+const router = useRouter()
 
 interface Track {
   id: number
@@ -10,20 +13,36 @@ interface Track {
   src: string
 }
 
-const tracks = ref<Track[]>([
-  {
-    id: 1,
-    title: '日常的小曲 · Everyday Tune',
-    duration: '03:24',
-    src: '/voices/background/8.日常的小曲.mp3',
-  },
-  {
-    id: 2,
-    title: '快乐的小曲 · Happy Tune',
-    duration: '03:07',
-    src: '/voices/background/9.快乐的小曲.mp3',
-  },
-])
+function parseDisplayName(filename: string): string {
+  const name = filename.replace(/\.mp3$/i, '')
+  const match = name.match(/^\d+\.(.+)$/)
+  return match ? match[1] : name
+}
+
+function loadPlaylist(): Track[] {
+  const saved = localStorage.getItem('music-playlist')
+  if (saved != null && saved !== '') {
+    try {
+      const savedIds = JSON.parse(saved) as string[]
+      return savedIds.map((filename, idx) => ({
+        id: idx + 1,
+        title: parseDisplayName(filename),
+        duration: '00:00',
+        src: `/voices/background/${filename}`,
+      }))
+    }
+    catch {
+      // 解析失败时使用默认列表
+    }
+  }
+  // 首次使用或从未保存过时使用默认列表
+  return [
+    { id: 1, title: '日常的小曲', duration: '03:24', src: '/voices/background/8.日常的小曲.mp3' },
+    { id: 2, title: '快乐的小曲', duration: '03:07', src: '/voices/background/9.快乐的小曲.mp3' },
+  ]
+}
+
+const tracks = ref<Track[]>([])
 
 const currentIndex = ref(0)
 const isPlaying = ref(false)
@@ -119,6 +138,9 @@ function togglePlayMode() {
 }
 
 onMounted(() => {
+  tracks.value = loadPlaylist()
+  currentIndex.value = 0
+
   audio.value = new Audio()
   if (!audio.value)
     return
