@@ -1,28 +1,64 @@
 <script setup lang="ts">
 import { Button, InputText, Textarea } from 'primevue'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
-defineProps<{ visible: boolean }>()
-const emit = defineEmits<{ confirm: [data: { name: string, config: Record<string, any> }], cancel: [] }>()
+const props = defineProps<{
+  visible: boolean
+  /** 编辑模式时传入已有数据 */
+  editData?: { name: string, displayName: string, description: string, config: Record<string, any> } | null
+}>()
+const emit = defineEmits<{
+  confirm: [data: { name: string, displayName: string, description: string, config: Record<string, any> }]
+  cancel: []
+}>()
 
 const name = ref('')
+const displayName = ref('')
+const description = ref('')
 const jsonText = ref('')
 const errorMsg = ref('')
+const showExtra = ref(false)
+
+const isEdit = computed(() => !!props.editData)
+
+// 当 dialog 打开或 editData 变化时，同步字段
+watch(() => props.visible, (v) => {
+  if (v && props.editData) {
+    name.value = props.editData.name
+    displayName.value = props.editData.displayName || props.editData.name
+    description.value = props.editData.description || ''
+    jsonText.value = JSON.stringify(props.editData.config || {}, null, 2)
+    showExtra.value = !!(props.editData.description)
+  }
+  else if (v) {
+    name.value = ''
+    displayName.value = ''
+    description.value = ''
+    jsonText.value = ''
+    showExtra.value = false
+  }
+  errorMsg.value = ''
+})
 
 const canSubmit = computed(() => name.value.trim() && jsonText.value.trim())
 
 function handleConfirm() {
   if (!name.value.trim()) {
-    errorMsg.value = '请输入服务名称'
+    errorMsg.value = '请输入 MCP 标题'
     return
   }
   if (!jsonText.value.trim()) {
-    errorMsg.value = '请输入 MCP 配置 JSON'
+    errorMsg.value = '请输入 JSON 配置'
     return
   }
   try {
     const config = JSON.parse(jsonText.value)
-    emit('confirm', { name: name.value.trim(), config })
+    emit('confirm', {
+      name: name.value.trim(),
+      displayName: displayName.value.trim() || name.value.trim(),
+      description: description.value.trim(),
+      config,
+    })
   }
   catch {
     errorMsg.value = 'JSON 格式无效'
@@ -33,6 +69,8 @@ function handleConfirm() {
 
 function handleCancel() {
   name.value = ''
+  displayName.value = ''
+  description.value = ''
   jsonText.value = ''
   errorMsg.value = ''
   emit('cancel')
@@ -44,21 +82,43 @@ function handleCancel() {
     <div v-if="visible" class="dialog-overlay" @click.self="handleCancel">
       <div class="dialog-card">
         <h2 class="dialog-title">
-          导入 MCP 工具服务
+          {{ isEdit ? '编辑 MCP 服务' : '添加 MCP 服务' }}
         </h2>
         <div class="dialog-form">
-          <label class="dialog-label">服务名称</label>
+          <label class="dialog-label">MCP 标题（唯一标识）</label>
           <InputText
             v-model="name"
-            placeholder="服务名称（如 my-mcp-tool）"
+            :disabled="isEdit"
+            placeholder="如 firecrawl-mcp"
             class="dialog-input"
+            :class="{ 'op-50': isEdit }"
           />
 
-          <label class="dialog-label">MCP 配置 JSON</label>
+          <!-- 附加信息（可折叠） -->
+          <div class="extra-toggle" @click="showExtra = !showExtra">
+            <span class="extra-arrow">{{ showExtra ? '▾' : '▸' }}</span>
+            <span>附加信息</span>
+          </div>
+          <div v-if="showExtra" class="extra-section">
+            <label class="dialog-label">显示名称</label>
+            <InputText
+              v-model="displayName"
+              placeholder="显示名称（可选）"
+              class="dialog-input"
+            />
+            <label class="dialog-label mt-2">描述</label>
+            <InputText
+              v-model="description"
+              placeholder="简短描述（可选）"
+              class="dialog-input"
+            />
+          </div>
+
+          <label class="dialog-label">JSON 配置</label>
           <Textarea
             v-model="jsonText"
-            rows="6"
-            placeholder='{"command":"npx","args":["-y","@mcp/server"],"type":"stdio"}'
+            rows="8"
+            :placeholder='`{\n  \"command\": \"npx\",\n  \"args\": [\"-y\", \"@mcp/server\"],\n  \"type\": \"stdio\"\n}`'
             class="dialog-input resize-none font-mono text-xs!"
           />
 
@@ -66,7 +126,7 @@ function handleCancel() {
             {{ errorMsg }}
           </div>
           <Button
-            label="确认导入"
+            :label="isEdit ? '保存' : '确认添加'"
             :disabled="!canSubmit"
             class="dialog-btn"
             @click="handleConfirm"
@@ -95,7 +155,7 @@ function handleCancel() {
 .dialog-card {
   position: relative;
   z-index: 10000;
-  width: 400px;
+  width: 420px;
   max-height: 85vh;
   overflow-y: auto;
   padding: 2rem 2.5rem;
@@ -159,6 +219,30 @@ function handleCancel() {
 
 .dialog-skip:hover {
   color: rgba(212, 175, 55, 0.8);
+}
+
+.extra-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  user-select: none;
+  padding: 0.15rem 0;
+}
+
+.extra-toggle:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.extra-arrow {
+  font-size: 0.6rem;
+}
+
+.extra-section {
+  padding-left: 0.5rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .dialog-fade-enter-active,

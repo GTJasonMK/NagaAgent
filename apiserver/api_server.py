@@ -1281,6 +1281,7 @@ def get_mcp_services():
             "description": manifest.get("description", ""),
             "source": "builtin",
             "available": available,
+            "enabled": True,
         })
 
     # 2. mcporter 外部配置（~/.mcporter/config.json 中的 mcpServers）
@@ -1288,12 +1289,22 @@ def get_mcp_services():
     for name, cfg in mcporter_config.get("mcpServers", {}).items():
         cmd = cfg.get("command", "")
         available = shutil.which(cmd) is not None if cmd else False
+        # 提取 meta 字段（以 _ 开头的不属于 MCP 协议本身）
+        display_name = cfg.get("_displayName", name)
+        description = cfg.get("_description", "")
+        disabled = cfg.get("_disabled", False)
+        if not description and cmd:
+            description = f"{cmd} {' '.join(cfg.get('args', []))}"
+        # 构建干净的 config（去掉 _ 开头的 meta 字段）
+        clean_config = {k: v for k, v in cfg.items() if not k.startswith("_")}
         services.append({
             "name": name,
-            "display_name": name,
-            "description": f"{cmd} {' '.join(cfg.get('args', []))}" if cmd else "",
+            "display_name": display_name,
+            "description": description,
             "source": "mcporter",
             "available": available,
+            "enabled": not disabled,
+            "config": clean_config,
         })
 
     return {"status": "success", "services": services}
@@ -1316,6 +1327,49 @@ async def import_mcp_config(request: McpImportRequest):
         json.dumps(mcporter_config, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return {"status": "success", "message": f"已添加 MCP 服务: {request.name}"}
+
+
+@app.put("/mcp/services/{name}")
+async def update_mcp_service(name: str, body: Dict[str, Any]):
+    """更新 MCP 服务配置（支持 config / displayName / description / enabled）"""
+    mcporter_config = _load_mcporter_config()
+    servers = mcporter_config.get("mcpServers", {})
+    if name not in servers:
+        raise HTTPException(status_code=404, detail=f"MCP 服务 {name} 不存在")
+    if "config" in body:
+        # 替换整个配置（但保留 meta 字段）
+        meta_keys = {"_displayName", "_description", "_disabled"}
+        old_meta = {k: v for k, v in servers[name].items() if k in meta_keys}
+        servers[name] = {**body["config"], **old_meta}
+    if "displayName" in body:
+        servers[name]["_displayName"] = body["displayName"]
+    if "description" in body:
+        servers[name]["_description"] = body["description"]
+    if "enabled" in body:
+        if body["enabled"]:
+            servers[name].pop("_disabled", None)
+        else:
+            servers[name]["_disabled"] = True
+    mcporter_config["mcpServers"] = servers
+    MCPORTER_CONFIG_PATH.write_text(
+        json.dumps(mcporter_config, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return {"status": "success", "message": f"已更新 MCP 服务: {name}"}
+
+
+@app.delete("/mcp/services/{name}")
+async def delete_mcp_service(name: str):
+    """删除外部 MCP 服务配置"""
+    mcporter_config = _load_mcporter_config()
+    servers = mcporter_config.get("mcpServers", {})
+    if name not in servers:
+        raise HTTPException(status_code=404, detail=f"MCP 服务 {name} 不存在")
+    del servers[name]
+    mcporter_config["mcpServers"] = servers
+    MCPORTER_CONFIG_PATH.write_text(
+        json.dumps(mcporter_config, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return {"status": "success", "message": f"已删除 MCP 服务: {name}"}
 
 
 class SkillImportRequest(BaseModel):

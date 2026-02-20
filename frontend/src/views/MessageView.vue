@@ -30,6 +30,7 @@ export function chatStream(content: string, options?: { skill?: string, images?:
     let spokenContent = ''
 
     live2dState.value = 'thinking'
+    let compressTimer: ReturnType<typeof setTimeout> | undefined
 
     // 情感解析函数
     function parseEmotionFromText(text: string): 'normal' | 'positive' | 'negative' | 'surprise' {
@@ -101,11 +102,13 @@ export function chatStream(content: string, options?: { skill?: string, images?:
         // 上下文压缩进度提示（覆盖式显示，compress_end 后非阻塞延迟清空）
         message.content = `> ${chunk.text}\n\n`
         if (chunk.type === 'compress_end') {
-          setTimeout(() => { message.content = '' }, 1200)
+          compressTimer = setTimeout(() => { message.content = '' }, 1200)
         }
       }
       else if (chunk.type === 'compress_info') {
         // 运行时压缩完成，在当前 assistant 消息前插入 info 标记
+        if (compressTimer) { clearTimeout(compressTimer); compressTimer = undefined }
+        message.content = ''
         const idx = MESSAGES.value.indexOf(message)
         if (idx > 0) {
           MESSAGES.value.splice(idx, 0, { role: 'info', content: chunk.text || '【已压缩上下文】' })

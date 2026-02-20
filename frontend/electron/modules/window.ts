@@ -106,7 +106,7 @@ export function createWindow(): BrowserWindow {
     frame: false,
     resizable: true,
     hasShadow: true,
-    backgroundColor: '#110901',
+    transparent: true,
     show: false,
     webPreferences: {
       preload: join(__dirname, 'preload.mjs'),

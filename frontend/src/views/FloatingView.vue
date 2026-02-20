@@ -216,7 +216,15 @@ onMounted(() => {
   })
 })
 
+// 球态下让 Electron 透明窗口无方形背景，展开态恢复不透明
+watch(floatingState, (state) => {
+  const bg = state === 'ball' ? 'transparent' : '#110901'
+  document.documentElement.style.backgroundColor = bg
+}, { immediate: true })
+
 onUnmounted(() => {
+  // 恢复经典模式背景
+  document.documentElement.style.backgroundColor = '#110901'
   unsubStateChange?.()
   unsubBlur?.()
   stopToolPolling()
