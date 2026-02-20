@@ -249,8 +249,10 @@ MARKET_ITEMS: List[Dict[str, Any]] = [
 
 
 def _run_command(command: List[str], timeout: int = 30) -> Tuple[int, str, str]:
-    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
-    return result.returncode, result.stdout.strip(), result.stderr.strip()
+    import locale
+    enc = locale.getpreferredencoding() or "utf-8"
+    result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, shell=(sys.platform == "win32"), encoding=enc, errors="replace")
+    return result.returncode, (result.stdout or "").strip(), (result.stderr or "").strip()
 
 
 def _get_openclaw_version() -> Optional[str]:
@@ -342,12 +344,12 @@ def _update_mcporter_firecrawl_config(api_key: Optional[str]) -> Path:
 def _install_agent_browser() -> None:
     if shutil.which("npm") is None:
         raise RuntimeError("未找到 npm，无法安装 agent-browser")
-    code, stdout, stderr = _run_command(["npm", "install", "-g", "agent-browser"], timeout=300)
+    code, stdout, stderr = _run_command(["npm", "install", "-g", "agent-browser", "--force"], timeout=3000)
     if code != 0:
-        raise RuntimeError(stderr or stdout or "npm install -g agent-browser 失败")
+        raise RuntimeError(stderr or stdout or "npm install -g agent-browser --force 失败")
     if shutil.which("agent-browser") is None:
         raise RuntimeError("agent-browser 未安装成功或未在 PATH 中")
-    code, stdout, stderr = _run_command(["agent-browser", "install"], timeout=300)
+    code, stdout, stderr = _run_command(["agent-browser", "install"], timeout=3000)
     if code != 0:
         raise RuntimeError(stderr or stdout or "agent-browser install 失败")
 
@@ -1256,7 +1258,8 @@ def _check_agent_available(manifest: Dict[str, Any]) -> bool:
     try:
         __import__(module_path)
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning(f"MCP 模块导入失败 {module_path}: {e}")
         return False
 
 
@@ -1265,9 +1268,11 @@ def get_mcp_services():
     """列出所有 MCP 服务并检查可用性（同步端点，由 FastAPI 在线程池中执行）"""
     services: List[Dict[str, Any]] = []
 
-    # 1. 内置 agent（扫描 mcpserver/**/agent-manifest.json）
+    # 1. 内置 agent（扫描 mcpserver 下所有 agent-manifest.json，与 mcp_registry 一致）
     mcpserver_dir = Path(__file__).resolve().parent.parent / "mcpserver"
-    for manifest_path in mcpserver_dir.glob("*/agent-manifest.json"):
+    if not mcpserver_dir.exists():
+        logger.warning(f"MCP 目录不存在: {mcpserver_dir}")
+    for manifest_path in sorted(mcpserver_dir.glob("**/agent-manifest.json")):
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):

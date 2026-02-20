@@ -56,3 +56,12 @@ pre:has(code) {
 input.p-inputnumber-input {
   width: 100% !important;
 }
+
+/* 确保 ScrollPanel 滚动条的 z-index 低于弹窗 */
+.p-scrollpanel-bar {
+  z-index: 1 !important;
+}
+
+.p-scrollpanel-bar-y {
+  z-index: 1 !important;
+}

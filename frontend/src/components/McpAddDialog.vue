@@ -78,6 +78,7 @@ function handleCancel() {
 </script>
 
 <template>
+  <Teleport to="body">
   <Transition name="dialog-fade">
     <div v-if="visible" class="dialog-overlay" @click.self="handleCancel">
       <div class="dialog-card">
@@ -122,8 +123,9 @@ function handleCancel() {
             class="dialog-input resize-none font-mono text-xs!"
           />
 
-          <div v-if="errorMsg" class="dialog-error">
-            {{ errorMsg }}
+            <div v-if="errorMsg" class="dialog-error">
+              {{ errorMsg }}
+            </div>
           </div>
           <Button
             :label="isEdit ? '保存' : '确认添加'"
@@ -136,15 +138,15 @@ function handleCancel() {
           取消
         </div>
       </div>
-    </div>
-  </Transition>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -163,6 +165,25 @@ function handleCancel() {
   border-radius: 12px;
   background: rgba(20, 14, 6, 0.98);
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(212, 175, 55, 0.1);
+}
+
+/* 确保弹窗内的滚动条也在正确的层级 */
+.dialog-card::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dialog-card::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.dialog-card::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.4);
+  border-radius: 4px;
+}
+
+.dialog-card::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.6);
 }
 
 .dialog-title {

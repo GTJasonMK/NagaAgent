@@ -162,6 +162,7 @@ async function onSkillConfirm(data: { name: string, content: string }) {
             已配置 {{ mcpTotalCount }} 个 MCP 服务器 · 已启用 {{ mcpEnabledCount }} 个
           </div>
 
+
           <div v-if="mcpLoading" class="text-white/40 text-xs py-2">
             检查可用性...
           </div>
