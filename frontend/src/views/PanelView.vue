@@ -2,15 +2,14 @@
 import { useWindowSize } from '@vueuse/core'
 import { computed } from 'vue'
 import { useLink } from 'vue-router'
+import { CONFIG } from '@/utils/config'
 import brain from '@/assets/icons/brain.png'
 import chip from '@/assets/icons/chip.png'
 import naga from '@/assets/icons/naga.png'
 import toolkit from '@/assets/icons/toolkit.png'
 import market from '@/assets/icons/market.svg'
-import floatingBall from '@/assets/icons/floating-ball.svg'
 import ArkButton from '@/components/ArkButton.vue'
 import { useParallax } from '@/composables/useParallax'
-import { CONFIG } from '@/utils/config'
 
 const musicBoxIcon = '/assets/Layer 8 (merged).png'
 
@@ -19,7 +18,7 @@ const scale = computed(() => height.value / 720)
 
 const { rx, ry, tx, ty } = useParallax({ rotateX: 5, rotateY: 4, translateX: 15, translateY: 10, invertRotate: true })
 
-function enterFloating() {
+function enterFloatingMode() {
   CONFIG.value.floating.enabled = true
   window.electronAPI?.floating.enter()
 }
@@ -51,31 +50,33 @@ function enterFloating() {
         <ArkButton :icon="brain" title="记忆<br>云海" @click="useLink({ to: '/mind' }).navigate" />
         <ArkButton :icon="toolkit" title="技能<br>工坊" @click="useLink({ to: '/skill' }).navigate" />
       </div>
-      <div class="grid grid-cols-2">
-        <div class="param-float-group flex">
-          <button
-            type="button"
-            class="float-ball-btn"
-            @click="enterFloating"
-          >
-            <img :src="floatingBall" alt="" class="float-ball-icon">
-            <span class="float-ball-text">悬浮球</span>
+      <div class="grid grid-cols-2 min-w-0">
+        <div class="flex flex-col min-w-0 relative">
+          <!-- 悬浮按钮 -->
+          <button class="float-btn absolute -left-16 top-0 bottom-0 w-12 flex flex-col items-center justify-center bg-white border-none shadow backdrop-blur-md transition hover:brightness-105" @click="enterFloatingMode">
+            <span class="text-lg font-serif font-bold text-black">悬浮</span>
+            <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="9" stroke="#B9B9B9" stroke-width="1.5"/>
+              <path d="M12 4C12 4 6 8 6 12C6 16 12 20 12 20" stroke="#B9B9B9" stroke-width="1.2" stroke-linecap="round" opacity="0.8"/>
+              <path d="M12 4C12 4 18 8 18 12C18 16 12 20 12 20" stroke="#B9B9B9" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+              <ellipse cx="9" cy="10" rx="1.5" ry="2" fill="#B9B9B9" opacity="0.6"/>
+            </svg>
+
           </button>
-          <div class="param-area flex flex-col flex-1 min-w-0">
-            <div class="bg-#363837 text-white p-2 text-sm">
-              参数设置
-            </div>
-            <div class="grow grid grid-cols-2 font-serif font-bold lh-none">
-              <ArkButton @click="useLink({ to: '/model' }).navigate">
-                <div class="size-full text-lg">模型链接</div>
-              </ArkButton>
-              <ArkButton @click="useLink({ to: '/memory' }).navigate">
-                <div class="size-full text-lg">记忆链接</div>
-              </ArkButton>
-            </div>
+          
+          <div class="bg-#363837 text-white p-2 text-sm">
+            参数设置
+          </div>
+          <div class="grow grid grid-cols-2 font-serif font-bold lh-none min-w-0">
+            <ArkButton class="min-w-0" @click="useLink({ to: '/model' }).navigate">
+              <div class="size-full text-lg">模型链接</div>
+            </ArkButton>
+            <ArkButton class="min-w-0" @click="useLink({ to: '/memory' }).navigate">
+              <div class="size-full text-lg">记忆链接</div>
+            </ArkButton>
           </div>
         </div>
-        <ArkButton :icon="chip" title="终端<br>设置" @click="useLink({ to: '/config' }).navigate" />
+        <ArkButton class="min-w-0" :icon="chip" title="终端<br>设置" @click="useLink({ to: '/config' }).navigate" />
       </div>
       <div class="grid grid-cols-2 -translate-x-1/5">
         <ArkButton class="market-btn" :icon="market" title="枢机<br>集市" />
@@ -89,44 +90,5 @@ function enterFloating() {
 .market-btn :deep(img),
 .music-btn :deep(img) {
   filter: grayscale(1) brightness(0.78) opacity(0.9);
-}
-
-.param-float-group {
-  background: #363837;
-  overflow: hidden;
-}
-
-.float-ball-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  gap: 4px;
-  padding: 8px 12px;
-  width: 56px;
-  min-width: 56px;
-  background: #363837;
-  border: none;
-  color: rgba(248, 250, 252, 0.9);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.float-ball-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.float-ball-icon {
-  width: 20px;
-  height: 20px;
-}
-
-.float-ball-text {
-  font-size: 1.125rem; /* 与模型链接 text-lg 一致 */
-  font-weight: 700;
-  font-family: serif;
-  line-height: 1.2;
-  color: rgba(248, 250, 252, 0.9);
 }
 </style>
