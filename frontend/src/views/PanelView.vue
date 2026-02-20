@@ -21,7 +21,7 @@ const { rx, ry, tx, ty } = useParallax({ rotateX: 5, rotateY: 4, translateX: 15,
 <template>
   <div class="flex flex-col items-start justify-center px-1/16">
     <div
-      class="grid grid-rows-4 gap-3 *:gap-3 will-change-transform" :style="{
+      class="grid grid-rows-4 gap-3 *:gap-3 will-change-transform select-none" :style="{
         transformOrigin: 'left',
         transform: `perspective(1000px) rotateX(${rx}deg) rotateY(${8 + ry}deg) translate(${tx}px, ${ty}px) scale(${scale})`,
       }"

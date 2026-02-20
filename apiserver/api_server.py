@@ -255,32 +255,6 @@ def _run_command(command: List[str], timeout: int = 30) -> Tuple[int, str, str]:
     return result.returncode, (result.stdout or "").strip(), (result.stderr or "").strip()
 
 
-def _get_openclaw_version() -> Optional[str]:
-    if shutil.which("openclaw") is None:
-        return None
-    try:
-        code, stdout, stderr = _run_command(["openclaw", "--version"], timeout=15)
-    except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired):
-        return None
-    if code == 0:
-        return stdout or stderr
-    return None
-
-
-def _get_openclaw_skills_data() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    if shutil.which("openclaw") is None:
-        return None, "openclaw_not_found"
-    try:
-        code, stdout, stderr = _run_command(["openclaw", "skills", "list", "--json"], timeout=30)
-    except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired) as exc:
-        return None, f"openclaw_skills_list_failed: {exc}"
-    if code != 0:
-        return None, stderr or stdout or "openclaw_skills_list_failed"
-    try:
-        return json.loads(stdout), None
-    except json.JSONDecodeError as exc:
-        return None, f"openclaw_skills_list_invalid_json: {exc}"
-
 
 def _download_text(url: str, timeout: int = 20) -> str:
     try:
@@ -354,52 +328,28 @@ def _install_agent_browser() -> None:
         raise RuntimeError(stderr or stdout or "agent-browser install 失败")
 
 
-def _build_market_item(
-    item: Dict[str, Any],
-    skills_data: Optional[Dict[str, Any]],
-    openclaw_found: bool,
-) -> Dict[str, Any]:
-    skill_name_value = item.get("skill_name") or item.get("id") or "unknown"
-    skill_name = str(skill_name_value)
-    skill_entry = None
-    if skills_data and isinstance(skills_data.get("skills"), list):
-        for entry in skills_data.get("skills", []):
-            if entry.get("name") == skill_name:
-                skill_entry = entry
-                break
+def _build_market_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    skill_name = str(item.get("skill_name") or item.get("id") or "unknown")
     skill_path = OPENCLAW_SKILLS_DIR / skill_name / "SKILL.md"
-    installed_by_file = skill_path.exists()
-    installed = installed_by_file or bool(skill_entry)
     return {
         "id": item.get("id"),
         "title": item.get("title"),
         "description": item.get("description"),
         "skill_name": skill_name,
         "enabled": item.get("enabled", True),
-        "installed": installed,
-        "eligible": skill_entry.get("eligible") if skill_entry else None,
-        "disabled": skill_entry.get("disabled") if skill_entry else None,
-        "missing": skill_entry.get("missing") if skill_entry else None,
+        "installed": skill_path.exists(),
         "skill_path": str(skill_path),
-        "openclaw_visible": bool(skill_entry) if openclaw_found else False,
         "install_type": item.get("install", {}).get("type"),
     }
 
 
 def _get_market_items_status() -> Dict[str, Any]:
-    openclaw_found = shutil.which("openclaw") is not None
-    openclaw_version = _get_openclaw_version()
-    skills_data, skills_error = _get_openclaw_skills_data()
-    items = [_build_market_item(item, skills_data, openclaw_found) for item in MARKET_ITEMS]
     return {
         "openclaw": {
-            "found": openclaw_found,
-            "version": openclaw_version,
             "skills_dir": str(OPENCLAW_SKILLS_DIR),
             "config_path": str(OPENCLAW_CONFIG_PATH),
-            "skills_error": skills_error,
         },
-        "items": items,
+        "items": [_build_market_item(item) for item in MARKET_ITEMS],
     }
 
 

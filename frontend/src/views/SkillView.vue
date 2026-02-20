@@ -156,7 +156,7 @@ async function onSkillConfirm(data: { name: string, content: string }) {
     <Accordion :value="accordionValue" class="pb-8" multiple>
       <!-- MCP 工具服务 -->
       <ConfigGroup value="mcp" header="MCP 工具服务">
-        <div class="grid gap-2">
+        <div class="grid gap-2 min-w-0 overflow-hidden">
           <!-- 计数摘要 -->
           <div v-if="!mcpLoading && mcpServices.length > 0" class="mcp-summary">
             已配置 {{ mcpTotalCount }} 个 MCP 服务器 · 已启用 {{ mcpEnabledCount }} 个
@@ -167,8 +167,8 @@ async function onSkillConfirm(data: { name: string, content: string }) {
             检查可用性...
           </div>
           <template v-else>
-            <div v-for="svc in mcpServices" :key="svc.name" class="mcp-item" :class="{ 'mcp-disabled': !svc.enabled }">
-              <div class="flex items-center gap-2 min-w-0 flex-1">
+            <div v-for="svc in mcpServices" :key="svc.name" class="mcp-item min-w-0" :class="{ 'mcp-disabled': !svc.enabled }">
+              <div class="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                 <!-- 开关 -->
                 <button
                   class="mcp-toggle"
@@ -178,7 +178,7 @@ async function onSkillConfirm(data: { name: string, content: string }) {
                 >
                   <span class="mcp-toggle-dot" />
                 </button>
-                <div class="min-w-0 flex-1">
+                <div class="min-w-0 flex-1 overflow-hidden">
                   <div class="flex items-center gap-1.5">
                     <span class="font-bold text-sm text-white truncate">{{ svc.displayName }}</span>
                     <span v-if="svc.source === 'builtin'" class="mcp-badge builtin">内置</span>
@@ -209,14 +209,14 @@ async function onSkillConfirm(data: { name: string, content: string }) {
 
       <!-- 技能仓库 -->
       <ConfigGroup value="skills" header="技能仓库">
-        <div class="grid gap-3">
+        <div class="grid gap-3 min-w-0 overflow-hidden">
           <div v-if="skillsLoading" class="text-white/40 text-xs py-2">
             加载中...
           </div>
           <template v-else>
-            <div v-for="item in skills" :key="item.id" class="skill-item">
-              <div class="flex-1 min-w-0">
-                <div class="font-bold text-sm text-white">{{ item.title }}</div>
+            <div v-for="item in skills" :key="item.id" class="skill-item min-w-0">
+              <div class="flex-1 min-w-0 overflow-hidden">
+                <div class="font-bold text-sm text-white truncate">{{ item.title }}</div>
                 <div class="text-xs op-50 truncate">{{ item.description }}</div>
               </div>
               <div class="ml-3 shrink-0">
