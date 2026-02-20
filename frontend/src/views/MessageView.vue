@@ -30,6 +30,7 @@ export function chatStream(content: string, options?: { skill?: string, images?:
     let spokenContent = ''
 
     live2dState.value = 'thinking'
+    let compressTimer: ReturnType<typeof setTimeout> | undefined
 
     // 情感解析函数
     function parseEmotionFromText(text: string): 'normal' | 'positive' | 'negative' | 'surprise' {
@@ -42,6 +43,9 @@ export function chatStream(content: string, options?: { skill?: string, images?:
       }
       return 'normal'
     }
+
+    // 记录当前轮次 content 流的起始位置，content_clean 只替换当前轮的 LLM 输出
+    let roundContentStart = 0
 
     for await (const chunk of response) {
       if (chunk.type === 'reasoning') {
@@ -57,8 +61,8 @@ export function chatStream(content: string, options?: { skill?: string, images?:
         }
       }
       else if (chunk.type === 'content_clean') {
-        // 后端解析出工具调用后，发送清理后的纯文本替换掉含有 ```tool``` 块的原文
-        message.content = chunk.text || ''
+        // 仅替换当前轮次的 LLM 输出（从 roundContentStart 开始），保留之前轮次的工具通知
+        message.content = message.content.substring(0, roundContentStart) + (chunk.text || '')
         spokenContent = chunk.text || ''
       }
       else if (chunk.type === 'tool_calls') {
@@ -87,10 +91,14 @@ export function chatStream(content: string, options?: { skill?: string, images?:
           message.content += `\n> ${status} ${label}\n`
         }
         message.content += '\n'
+        // 工具结果追加完毕，更新下一轮 content 的起始位置
+        roundContentStart = message.content.length
       }
       else if (chunk.type === 'round_start' && (chunk.round ?? 0) > 1) {
         // 多轮分隔
         message.content += '\n---\n\n'
+        // 新一轮开始，更新 content 起始位置
+        roundContentStart = message.content.length
       }
       else if (chunk.type === 'auth_expired') {
         // LLM 认证失败，触发重新登录
@@ -101,11 +109,13 @@ export function chatStream(content: string, options?: { skill?: string, images?:
         // 上下文压缩进度提示（覆盖式显示，compress_end 后非阻塞延迟清空）
         message.content = `> ${chunk.text}\n\n`
         if (chunk.type === 'compress_end') {
-          setTimeout(() => { message.content = '' }, 1200)
+          compressTimer = setTimeout(() => { message.content = '' }, 1200)
         }
       }
       else if (chunk.type === 'compress_info') {
         // 运行时压缩完成，在当前 assistant 消息前插入 info 标记
+        if (compressTimer) { clearTimeout(compressTimer); compressTimer = undefined }
+        message.content = ''
         const idx = MESSAGES.value.indexOf(message)
         if (idx > 0) {
           MESSAGES.value.splice(idx, 0, { role: 'info', content: chunk.text || '【已压缩上下文】' })

@@ -25,6 +25,7 @@ import { ACCESS_TOKEN, authExpired, setAuthExpiredSuppressed } from '@/api'
 import { clearExpression, setExpression } from '@/utils/live2dController'
 import { initParallax, destroyParallax } from '@/utils/parallax'
 import { playBgm, playClickEffect, stopBgm } from '@/composables/useAudio'
+import { useMusicPlayer } from '@/composables/useMusicPlayer'
 
 const isElectron = !!window.electronAPI
 const isMac = window.electronAPI?.platform === 'darwin'
@@ -32,6 +33,7 @@ const isMac = window.electronAPI?.platform === 'darwin'
 const titleBarPadding = isElectron ? (isMac ? '28px' : '32px') : '0px'
 
 const toast = useToast()
+useMusicPlayer() // 注册全局音乐播放器，主界面 BGM 与音律坊共用
 
 const { width, height } = useWindowSize()
 const scale = computed(() => height.value / (10000 - CONFIG.value.web_live2d.model.size))
@@ -187,6 +189,12 @@ function enterMainContent() {
 watch(sessionRestored, (restored) => {
   if (restored) {
     toast.add({ severity: 'info', summary: '已恢复登录状态', detail: nagaUser.value?.username, life: 3000 })
+    // 如果登录弹窗已显示（splash 结束时 fetchMe 尚未完成），自动关闭并进入主界面
+    if (showLoginDialog.value) {
+      showLoginDialog.value = false
+      setAuthExpiredSuppressed(false)
+      enterMainContent()
+    }
   }
 })
 

@@ -50,8 +50,19 @@ export const wakeVoiceOptions = Object.keys(wakeVoiceMap)
 export const effectFileOptions = parseEffectFiles()
 
 // ─── BGM 播放器（单例） ──────────────────────────────
+// 当音律坊注册为委托时，BGM 由音律坊统一播放，避免重复
+type BgmDelegate = { playFile: (file: string) => void; pause: () => void }
+let bgmDelegate: BgmDelegate | null = null
 let bgmAudio: HTMLAudioElement | null = null
 let bgmCurrentFile = ''
+
+export function registerBgmDelegate(d: BgmDelegate) {
+  bgmDelegate = d
+}
+
+export function unregisterBgmDelegate() {
+  bgmDelegate = null
+}
 
 function fadeTo(audio: HTMLAudioElement, targetVolume: number, duration = 800): Promise<void> {
   return new Promise((resolve) => {
@@ -73,9 +84,13 @@ function fadeTo(audio: HTMLAudioElement, targetVolume: number, duration = 800): 
 
 export async function playBgm(file: string) {
   if (!audioSettings.value.bgmEnabled) return
+  if (bgmDelegate) {
+    bgmDelegate.playFile(file)
+    return
+  }
   if (bgmAudio && bgmCurrentFile === file) return
 
-  // 淡出旧 BGM
+  // 淡出旧 BGM（无委托时的兜底逻辑）
   if (bgmAudio) {
     await fadeTo(bgmAudio, 0, 600)
     bgmAudio.pause()
@@ -98,6 +113,10 @@ export async function playBgm(file: string) {
 }
 
 export function stopBgm() {
+  if (bgmDelegate) {
+    bgmDelegate.pause()
+    return
+  }
   if (!bgmAudio) return
   fadeTo(bgmAudio, 0, 600).then(() => {
     bgmAudio?.pause()

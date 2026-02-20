@@ -27,7 +27,7 @@ function enterFloatingMode() {
 <template>
   <div class="flex flex-col items-start justify-center px-1/16">
     <div
-      class="grid grid-rows-4 gap-3 *:gap-3 will-change-transform" :style="{
+      class="grid grid-rows-4 gap-3 *:gap-3 will-change-transform select-none" :style="{
         transformOrigin: 'left',
         transform: `perspective(1000px) rotateX(${rx}deg) rotateY(${8 + ry}deg) translate(${tx}px, ${ty}px) scale(${scale})`,
       }"
@@ -36,7 +36,7 @@ function enterFloatingMode() {
         <div class="absolute -left-12 right-1/2 top-2 bottom-2">
           <ArkButton class="size-full bg-#f00! z-1" disabled>
             <div class="size-full">
-              娜迦EXE测试版
+              娜迦协议Demo
             </div>
           </ArkButton>
         </div>

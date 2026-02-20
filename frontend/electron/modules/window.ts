@@ -106,7 +106,7 @@ export function createWindow(): BrowserWindow {
     frame: false,
     resizable: true,
     hasShadow: true,
-    backgroundColor: '#110901',
+    transparent: true,
     show: false,
     webPreferences: {
       preload: join(__dirname, 'preload.mjs'),
@@ -171,6 +171,7 @@ export function enterFloatingMode(): void {
   win.setAlwaysOnTop(true, 'floating')
   win.setSkipTaskbar(true)
   win.setResizable(false)
+  win.setHasShadow(false)
   win.setMinimumSize(BALL_SIZE, BALL_SIZE)
   win.setBounds({
     x: ballPosition.x,
@@ -195,6 +196,7 @@ export function exitFloatingMode(): void {
   win.setAlwaysOnTop(false)
   win.setSkipTaskbar(false)
   win.setResizable(true)
+  win.setHasShadow(true)
   win.setMinimumSize(800, 600)
 
   if (classicBounds) {
@@ -230,6 +232,7 @@ export function expandFloatingWindow(toFull: boolean = false): void {
   const toBounds = { x: expandX, y: expandY, width: EXPANDED_WIDTH, height: targetHeight }
 
   win.setMinimumSize(BALL_SIZE, BALL_SIZE)
+  win.setHasShadow(true)
 
   animateBounds(win, fromBounds, toBounds, () => {
     win.setMinimumSize(EXPANDED_WIDTH, targetHeight)
@@ -337,6 +340,7 @@ export function collapseFloatingWindow(): void {
   }
 
   win.setMinimumSize(BALL_SIZE, BALL_SIZE)
+  win.setHasShadow(false)
   animateBounds(win, fromBounds, toBounds)
 }
 

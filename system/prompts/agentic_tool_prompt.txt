@@ -7,7 +7,7 @@
 {"agentType": "openclaw", "task_type": "message", "message": "完整的任务描述"}
 ```
 
-### MCP本地工具（天气、时间、应用启动等）
+### MCP本地工具
 ```tool
 {"agentType": "mcp", "service_name": "服务名", "tool_name": "工具命令", ...参数}
 ```

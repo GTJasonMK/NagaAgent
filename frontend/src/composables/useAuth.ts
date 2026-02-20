@@ -1,9 +1,10 @@
 import { computed, ref, watch } from 'vue'
 import { ACCESS_TOKEN } from '@/api'
+import { getAffinity, getCredits } from '@/api/business'
 import coreApi from '@/api/core'
 import { CONFIG, backendConnected } from '@/utils/config'
 
-export const nagaUser = ref<{ username: string, sub?: string } | null>(null)
+export const nagaUser = ref<{ username: string, sub?: string, points?: number, affinity?: number } | null>(null)
 export const isNagaLoggedIn = computed(() => !!nagaUser.value)
 export const sessionRestored = ref(false)
 
@@ -27,6 +28,26 @@ function syncGameEnabled(loggedIn: boolean) {
   CONFIG.value.game.enabled = loggedIn
 }
 
+/**
+ * 拉取积分 + 好感度，更新 nagaUser
+ */
+async function fetchUserStats() {
+  if (!ACCESS_TOKEN.value || !nagaUser.value) return
+  try {
+    const [credits, affinity] = await Promise.all([
+      getCredits().catch(() => null),
+      getAffinity().catch(() => null),
+    ])
+    if (!nagaUser.value) return
+    if (credits) nagaUser.value.points = credits.available
+    if (affinity) nagaUser.value.affinity = affinity.totalExp
+  }
+  catch { /* 静默失败，不影响主流程 */ }
+}
+
+/** 供外部（如签到后）手动刷新 */
+export const refreshUserStats = fetchUserStats
+
 // Token 刷新时自动同步到 memory_server.token
 watch(ACCESS_TOKEN, (newToken) => {
   if (nagaUser.value) {
@@ -43,6 +64,7 @@ export function useAuth() {
       nagaUser.value = res.user
       syncMemoryServer(true, res.memoryUrl)
       syncGameEnabled(true)
+      fetchUserStats()
     }
     return res
   }
@@ -54,6 +76,7 @@ export function useAuth() {
       nagaUser.value = res.user || null
       syncMemoryServer(true)
       syncGameEnabled(true)
+      fetchUserStats()
     }
     return res
   }
@@ -74,6 +97,7 @@ export function useAuth() {
         sessionRestored.value = true
         syncMemoryServer(true, res.memoryUrl)
         syncGameEnabled(true)
+        fetchUserStats()
 
         // 防止 fetchMe 在 connectBackend 之前完成导致 CONFIG 被覆盖
         if (!backendConnected.value) {
@@ -127,5 +151,5 @@ export function useAuth() {
     }
   }
 
-  return { login, register, sendVerification, getCaptcha, fetchMe, logout, skipLogin }
+  return { login, register, sendVerification, getCaptcha, fetchMe, logout, skipLogin, refreshUserStats }
 }

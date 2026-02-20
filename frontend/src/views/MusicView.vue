@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch, onActivated } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import BoxContainer from '@/components/BoxContainer.vue'
 import musicBox from '@/assets/icons/music-box.svg'
-
-const router = useRouter()
 
 interface Track {
   id: number
@@ -13,59 +10,20 @@ interface Track {
   src: string
 }
 
-// 从 localStorage 加载播放列表
-const bgmGlob = import.meta.glob('/public/voices/background/*.mp3', { query: '?url', import: 'default' })
-
-function parseDisplayName(filename: string): string {
-  const name = filename.replace(/\.mp3$/i, '')
-  const match = name.match(/^\d+\.(.+)$/)
-  return match ? match[1] : name
-}
-
-async function loadPlaylist(): Promise<Track[]> {
-  const saved = localStorage.getItem('music-playlist')
-  if (saved != null && saved !== '') {
-    try {
-      const savedIds = JSON.parse(saved) as string[]
-      const allSongs: Array<{ id: string, filename: string, src: string }> = []
-      for (const path of Object.keys(bgmGlob)) {
-        const filename = path.replace('/public/voices/background/', '')
-        allSongs.push({ id: filename, filename, src: `/voices/background/${filename}` })
-      }
-      const playlist = savedIds
-        .map(id => allSongs.find(s => s.id === id))
-        .filter((s): s is { id: string, filename: string, src: string } => s !== undefined)
-        .map((s, idx) => ({
-          id: idx + 1,
-          title: parseDisplayName(s.filename),
-          duration: '03:24',
-          src: s.src,
-        }))
-      // 已保存过的列表（含空列表）直接返回，不再使用默认列表
-      return playlist
-    }
-    catch {
-      // 解析失败时 fallback 到默认列表
-    }
-  }
-  // 首次使用或从未保存过时使用默认列表
-  return [
-    {
-      id: 1,
-      title: '日常的小曲 · Everyday Tune',
-      duration: '03:24',
-      src: '/voices/background/8.日常的小曲.mp3',
-    },
-    {
-      id: 2,
-      title: '快乐的小曲 · Happy Tune',
-      duration: '03:07',
-      src: '/voices/background/9.快乐的小曲.mp3',
-    },
-  ]
-}
-
-const tracks = ref<Track[]>([])
+const tracks = ref<Track[]>([
+  {
+    id: 1,
+    title: '日常的小曲 · Everyday Tune',
+    duration: '03:24',
+    src: '/voices/background/8.日常的小曲.mp3',
+  },
+  {
+    id: 2,
+    title: '快乐的小曲 · Happy Tune',
+    duration: '03:07',
+    src: '/voices/background/9.快乐的小曲.mp3',
+  },
+])
 
 const currentIndex = ref(0)
 const isPlaying = ref(false)
@@ -100,7 +58,7 @@ function setupAudioForTrack() {
 }
 
 function togglePlay() {
-  if (!audio.value || !tracks.value.length) return
+  if (!audio.value) return
 
   if (audio.value.paused) {
     audio.value.play().then(() => {
@@ -160,10 +118,7 @@ function togglePlayMode() {
     playMode.value = 'list'
 }
 
-onMounted(async () => {
-  // 加载播放列表
-  tracks.value = await loadPlaylist()
-
+onMounted(() => {
   audio.value = new Audio()
   if (!audio.value)
     return
@@ -193,17 +148,6 @@ onBeforeUnmount(() => {
 
 watch(currentTrack, () => {
   setupAudioForTrack()
-})
-
-// 使用 onActivated 在从编辑页面返回时重新加载播放列表
-import { onActivated } from 'vue'
-onActivated(async () => {
-  const newPlaylist = await loadPlaylist()
-  if (JSON.stringify(newPlaylist.map(t => t.src)) !== JSON.stringify(tracks.value.map(t => t.src))) {
-    tracks.value = newPlaylist
-    currentIndex.value = 0
-    setupAudioForTrack()
-  }
 })
 </script>
 
