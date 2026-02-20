@@ -898,15 +898,15 @@ async def chat_stream(request: ChatRequest):
 
             # ====== 启动压缩：将上一个会话的历史 + 更早的压缩记录合并压缩，注入 system prompt ======
             try:
-                from .context_compressor import compress_for_startup, build_compact_block
+                from .context_compressor import compress_for_startup, build_compress_block
                 prev_session_id = message_manager._get_previous_session_id(session_id)
-                previous_compact = message_manager.get_session_compact(prev_session_id) if prev_session_id else ""
+                previous_compress = message_manager.get_session_compress(prev_session_id) if prev_session_id else ""
                 prev_messages = message_manager._get_previous_session_messages(session_id)
-                if prev_messages or previous_compact:
-                    summary = await compress_for_startup(prev_messages, previous_compact=previous_compact)
+                if prev_messages or previous_compress:
+                    summary = await compress_for_startup(prev_messages, previous_compress=previous_compress)
                     if summary:
-                        system_prompt += build_compact_block(summary)
-                        message_manager.set_session_compact(session_id, summary)
+                        system_prompt += build_compress_block(summary)
+                        message_manager.set_session_compress(session_id, summary)
                         logger.info(f"[启动压缩] 已将上一会话摘要注入 system prompt ({len(summary)} 字)")
             except Exception as e:
                 logger.debug(f"[启动压缩] 跳过: {e}")

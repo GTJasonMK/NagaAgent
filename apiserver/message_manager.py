@@ -91,7 +91,7 @@ class MessageManager:
                 "agent_type": session.get("agent_type", "default"),
                 "temporary": session.get("temporary", False),
                 "messages": session["messages"],
-                "compact": session.get("compact", ""),
+                "compress": session.get("compress", ""),
             }
             self._get_session_file(session_id).write_text(
                 json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -113,7 +113,7 @@ class MessageManager:
                     "agent_type": data.get("agent_type", "default"),
                     "temporary": data.get("temporary", False),
                     "messages": data.get("messages", []),
-                    "compact": data.get("compact", ""),
+                    "compress": data.get("compress", ""),
                 }
                 loaded += 1
             except Exception as e:
@@ -224,17 +224,17 @@ class MessageManager:
         candidates.sort(key=lambda x: x[1].get("last_activity", ""), reverse=True)
         return candidates[0][0]
 
-    def get_session_compact(self, session_id: str) -> str:
+    def get_session_compress(self, session_id: str) -> str:
         """获取会话的压缩摘要"""
         session = self.sessions.get(session_id)
-        return (session.get("compact", "") if session else "") or ""
+        return (session.get("compress", "") if session else "") or ""
 
-    def set_session_compact(self, session_id: str, compact: str):
+    def set_session_compress(self, session_id: str, compress: str):
         """设置会话的压缩摘要并持久化"""
         session = self.sessions.get(session_id)
         if not session:
             return
-        session["compact"] = compact
+        session["compress"] = compress
         if not session.get("temporary"):
             self._save_session_to_disk(session_id)
 
@@ -256,9 +256,9 @@ class MessageManager:
         session_messages = [m for m in session_messages if m.get("role") != "info"]
 
         # 启用持久化上下文时，从上一个会话取最近消息作为背景注入
-        # 如果 system_prompt 中已包含 <compact> 压缩摘要，或上一个会话末尾
+        # 如果 system_prompt 中已包含 <compress> 压缩摘要，或上一个会话末尾
         # 已有【已压缩上下文】标记（说明该会话曾经被压缩过），则跳过原始消息注入
-        if self.persistent_context and "<compact>" not in system_prompt:
+        if self.persistent_context and "<compress>" not in system_prompt:
             prev_messages = self._get_previous_session_messages(session_id)
             # 检查上一个会话的最后一条消息是否为压缩标记
             prev_was_compressed = (
