@@ -123,6 +123,8 @@ onMounted(() => {
   if (!audio.value)
     return
 
+  audio.value.addEventListener('play', () => { isPlaying.value = true })
+  audio.value.addEventListener('pause', () => { isPlaying.value = false })
   audio.value.addEventListener('timeupdate', () => {
     if (!audio.value) return
     currentTime.value = audio.value.currentTime
