@@ -216,7 +216,15 @@ onMounted(() => {
   })
 })
 
+// 球态下让 Electron 透明窗口无方形背景，展开态恢复不透明
+watch(floatingState, (state) => {
+  const bg = state === 'ball' ? 'transparent' : '#110901'
+  document.documentElement.style.backgroundColor = bg
+}, { immediate: true })
+
 onUnmounted(() => {
+  // 恢复经典模式背景
+  document.documentElement.style.backgroundColor = '#110901'
   unsubStateChange?.()
   unsubBlur?.()
   stopToolPolling()
@@ -278,6 +286,22 @@ function onBallPointerUp(e: PointerEvent) {
   ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
   if (!hasDragged) {
     handleBallClick()
+  }
+  dragState = null
+}
+
+// 紧凑态/完整态球：拖拽 + 点击收起
+function onCompactBallPointerDown(e: PointerEvent) {
+  e.stopPropagation()
+  onDragPointerDown(e)
+}
+
+function onCompactBallPointerUp(e: PointerEvent) {
+  if (!dragState)
+    return
+  ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+  if (!hasDragged) {
+    handleCollapse()
   }
   dragState = null
 }
@@ -603,6 +627,7 @@ useEventListener('token', () => {
     @pointermove="onDragPointerMove"
     @pointerup="onBallPointerUp"
     @contextmenu.prevent="showBallContextMenu"
+    @dragstart.prevent
   >
     <div class="ball-glow" :class="{ 'glow-pulse': isGenerating }" />
     <div class="ball-content">
@@ -620,8 +645,8 @@ useEventListener('token', () => {
     @pointermove="onDragPointerMove"
     @pointerup="onDragPointerUp"
   >
-    <!-- 左侧方块：与球态视觉一致，点击收起 -->
-    <div class="compact-ball" @pointerdown.stop @click="handleCollapse">
+    <!-- 左侧方块：与球态视觉一致，拖拽移动/点击收起 -->
+    <div class="compact-ball" @pointerdown="onCompactBallPointerDown" @pointermove="onDragPointerMove" @pointerup="onCompactBallPointerUp" @dragstart.prevent>
       <div class="ball-content">
         <img :src="framePath(frameIndex)" class="ball-frame" draggable="false">
       </div>
@@ -690,7 +715,7 @@ useEventListener('token', () => {
       @pointermove="onDragPointerMove"
       @pointerup="onDragPointerUp"
     >
-      <div class="compact-ball" @pointerdown.stop @click="handleCollapse">
+      <div class="compact-ball" @pointerdown="onCompactBallPointerDown" @pointermove="onDragPointerMove" @pointerup="onCompactBallPointerUp" @dragstart.prevent>
         <div class="ball-content">
           <img :src="framePath(frameIndex)" class="ball-frame" draggable="false">
         </div>
@@ -880,43 +905,40 @@ useEventListener('token', () => {
   border-radius: 50%;
   cursor: pointer;
   touch-action: none;
-  background: radial-gradient(circle at 40% 35%, #2a1810, #110901);
 }
 
-/* 外发光环 */
+/* 彩色光环（保持在窗口 100x100 内，避免方形裁切） */
 .ball-glow {
   position: absolute;
-  inset: -4px;
+  inset: 0;
   border-radius: 50%;
   background: conic-gradient(from 0deg, #ac45f1, #7a7ef4, #3dc6f8, #55a9f6, #ac45f1);
-  opacity: 0.5;
-  z-index: -1;
+  opacity: 0.7;
+  z-index: 0;
   animation: glow-spin 6s linear infinite;
-  filter: blur(6px);
 }
 
 @keyframes glow-spin {
   to { transform: rotate(360deg); }
 }
 
-/* 生成中：光晕呼吸脉冲（旋转加速 + 透明度/扩散范围脉冲） */
+/* 生成中：旋转加速 + 透明度脉冲 */
 .ball-glow.glow-pulse {
   animation: glow-spin 3s linear infinite, glow-pulse 1.5s ease-in-out infinite;
 }
 
 @keyframes glow-pulse {
-  0%, 100% { opacity: 0.5; inset: -4px; filter: blur(6px); }
-  50% { opacity: 1; inset: -10px; filter: blur(10px); }
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 .ball-content {
-  width: 100%;
-  height: 100%;
-  aspect-ratio: 1;
+  position: absolute;
+  inset: 3px;
   border-radius: 50%;
   overflow: hidden;
-  position: relative;
   z-index: 1;
+  background: radial-gradient(circle at 40% 35%, #2a1810, #110901);
 }
 
 .ball-frame {
@@ -925,6 +947,7 @@ useEventListener('token', () => {
   object-fit: cover;
   pointer-events: none;
   user-select: none;
+  -webkit-user-drag: none;
 }
 
 /* 灯泡通知覆盖层：绝对定位叠在眨眼帧上方，独立闪烁 */
@@ -942,9 +965,9 @@ useEventListener('token', () => {
 /* 边框环 */
 .ball-ring {
   position: absolute;
-  inset: 0;
+  inset: 3px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.15);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
   z-index: 2;
   pointer-events: none;
   transition: border-color 0.3s;
@@ -976,6 +999,16 @@ useEventListener('token', () => {
   cursor: pointer;
   position: relative;
   background: radial-gradient(circle at 40% 35%, #2a1810, #110901);
+}
+
+/* 紧凑/完整态的球无光环，内容占满 */
+.compact-ball .ball-content {
+  inset: 0;
+  background: none;
+}
+
+.compact-ball .ball-ring {
+  inset: 0;
 }
 
 .compact-ball:hover .ball-ring {

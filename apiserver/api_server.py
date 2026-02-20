@@ -255,32 +255,6 @@ def _run_command(command: List[str], timeout: int = 30) -> Tuple[int, str, str]:
     return result.returncode, (result.stdout or "").strip(), (result.stderr or "").strip()
 
 
-def _get_openclaw_version() -> Optional[str]:
-    if shutil.which("openclaw") is None:
-        return None
-    try:
-        code, stdout, stderr = _run_command(["openclaw", "--version"], timeout=15)
-    except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired):
-        return None
-    if code == 0:
-        return stdout or stderr
-    return None
-
-
-def _get_openclaw_skills_data() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    if shutil.which("openclaw") is None:
-        return None, "openclaw_not_found"
-    try:
-        code, stdout, stderr = _run_command(["openclaw", "skills", "list", "--json"], timeout=30)
-    except (OSError, subprocess.SubprocessError, subprocess.TimeoutExpired) as exc:
-        return None, f"openclaw_skills_list_failed: {exc}"
-    if code != 0:
-        return None, stderr or stdout or "openclaw_skills_list_failed"
-    try:
-        return json.loads(stdout), None
-    except json.JSONDecodeError as exc:
-        return None, f"openclaw_skills_list_invalid_json: {exc}"
-
 
 def _download_text(url: str, timeout: int = 20) -> str:
     try:
@@ -354,52 +328,28 @@ def _install_agent_browser() -> None:
         raise RuntimeError(stderr or stdout or "agent-browser install 失败")
 
 
-def _build_market_item(
-    item: Dict[str, Any],
-    skills_data: Optional[Dict[str, Any]],
-    openclaw_found: bool,
-) -> Dict[str, Any]:
-    skill_name_value = item.get("skill_name") or item.get("id") or "unknown"
-    skill_name = str(skill_name_value)
-    skill_entry = None
-    if skills_data and isinstance(skills_data.get("skills"), list):
-        for entry in skills_data.get("skills", []):
-            if entry.get("name") == skill_name:
-                skill_entry = entry
-                break
+def _build_market_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    skill_name = str(item.get("skill_name") or item.get("id") or "unknown")
     skill_path = OPENCLAW_SKILLS_DIR / skill_name / "SKILL.md"
-    installed_by_file = skill_path.exists()
-    installed = installed_by_file or bool(skill_entry)
     return {
         "id": item.get("id"),
         "title": item.get("title"),
         "description": item.get("description"),
         "skill_name": skill_name,
         "enabled": item.get("enabled", True),
-        "installed": installed,
-        "eligible": skill_entry.get("eligible") if skill_entry else None,
-        "disabled": skill_entry.get("disabled") if skill_entry else None,
-        "missing": skill_entry.get("missing") if skill_entry else None,
+        "installed": skill_path.exists(),
         "skill_path": str(skill_path),
-        "openclaw_visible": bool(skill_entry) if openclaw_found else False,
         "install_type": item.get("install", {}).get("type"),
     }
 
 
 def _get_market_items_status() -> Dict[str, Any]:
-    openclaw_found = shutil.which("openclaw") is not None
-    openclaw_version = _get_openclaw_version()
-    skills_data, skills_error = _get_openclaw_skills_data()
-    items = [_build_market_item(item, skills_data, openclaw_found) for item in MARKET_ITEMS]
     return {
         "openclaw": {
-            "found": openclaw_found,
-            "version": openclaw_version,
             "skills_dir": str(OPENCLAW_SKILLS_DIR),
             "config_path": str(OPENCLAW_CONFIG_PATH),
-            "skills_error": skills_error,
         },
-        "items": items,
+        "items": [_build_market_item(item) for item in MARKET_ITEMS],
     }
 
 
@@ -900,15 +850,15 @@ async def chat_stream(request: ChatRequest):
 
             # ====== 启动压缩：将上一个会话的历史 + 更早的压缩记录合并压缩，注入 system prompt ======
             try:
-                from .context_compressor import compress_for_startup, build_compact_block
+                from .context_compressor import compress_for_startup, build_compress_block
                 prev_session_id = message_manager._get_previous_session_id(session_id)
-                previous_compact = message_manager.get_session_compact(prev_session_id) if prev_session_id else ""
+                previous_compress = message_manager.get_session_compress(prev_session_id) if prev_session_id else ""
                 prev_messages = message_manager._get_previous_session_messages(session_id)
-                if prev_messages or previous_compact:
-                    summary = await compress_for_startup(prev_messages, previous_compact=previous_compact)
+                if prev_messages or previous_compress:
+                    summary = await compress_for_startup(prev_messages, previous_compress=previous_compress)
                     if summary:
-                        system_prompt += build_compact_block(summary)
-                        message_manager.set_session_compact(session_id, summary)
+                        system_prompt += build_compress_block(summary)
+                        message_manager.set_session_compress(session_id, summary)
                         logger.info(f"[启动压缩] 已将上一会话摘要注入 system prompt ({len(summary)} 字)")
             except Exception as e:
                 logger.debug(f"[启动压缩] 跳过: {e}")
@@ -1286,6 +1236,7 @@ def get_mcp_services():
             "description": manifest.get("description", ""),
             "source": "builtin",
             "available": available,
+            "enabled": True,
         })
 
     # 2. mcporter 外部配置（~/.mcporter/config.json 中的 mcpServers）
@@ -1293,12 +1244,22 @@ def get_mcp_services():
     for name, cfg in mcporter_config.get("mcpServers", {}).items():
         cmd = cfg.get("command", "")
         available = shutil.which(cmd) is not None if cmd else False
+        # 提取 meta 字段（以 _ 开头的不属于 MCP 协议本身）
+        display_name = cfg.get("_displayName", name)
+        description = cfg.get("_description", "")
+        disabled = cfg.get("_disabled", False)
+        if not description and cmd:
+            description = f"{cmd} {' '.join(cfg.get('args', []))}"
+        # 构建干净的 config（去掉 _ 开头的 meta 字段）
+        clean_config = {k: v for k, v in cfg.items() if not k.startswith("_")}
         services.append({
             "name": name,
-            "display_name": name,
-            "description": f"{cmd} {' '.join(cfg.get('args', []))}" if cmd else "",
+            "display_name": display_name,
+            "description": description,
             "source": "mcporter",
             "available": available,
+            "enabled": not disabled,
+            "config": clean_config,
         })
 
     return {"status": "success", "services": services}
@@ -1321,6 +1282,49 @@ async def import_mcp_config(request: McpImportRequest):
         json.dumps(mcporter_config, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return {"status": "success", "message": f"已添加 MCP 服务: {request.name}"}
+
+
+@app.put("/mcp/services/{name}")
+async def update_mcp_service(name: str, body: Dict[str, Any]):
+    """更新 MCP 服务配置（支持 config / displayName / description / enabled）"""
+    mcporter_config = _load_mcporter_config()
+    servers = mcporter_config.get("mcpServers", {})
+    if name not in servers:
+        raise HTTPException(status_code=404, detail=f"MCP 服务 {name} 不存在")
+    if "config" in body:
+        # 替换整个配置（但保留 meta 字段）
+        meta_keys = {"_displayName", "_description", "_disabled"}
+        old_meta = {k: v for k, v in servers[name].items() if k in meta_keys}
+        servers[name] = {**body["config"], **old_meta}
+    if "displayName" in body:
+        servers[name]["_displayName"] = body["displayName"]
+    if "description" in body:
+        servers[name]["_description"] = body["description"]
+    if "enabled" in body:
+        if body["enabled"]:
+            servers[name].pop("_disabled", None)
+        else:
+            servers[name]["_disabled"] = True
+    mcporter_config["mcpServers"] = servers
+    MCPORTER_CONFIG_PATH.write_text(
+        json.dumps(mcporter_config, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return {"status": "success", "message": f"已更新 MCP 服务: {name}"}
+
+
+@app.delete("/mcp/services/{name}")
+async def delete_mcp_service(name: str):
+    """删除外部 MCP 服务配置"""
+    mcporter_config = _load_mcporter_config()
+    servers = mcporter_config.get("mcpServers", {})
+    if name not in servers:
+        raise HTTPException(status_code=404, detail=f"MCP 服务 {name} 不存在")
+    del servers[name]
+    mcporter_config["mcpServers"] = servers
+    MCPORTER_CONFIG_PATH.write_text(
+        json.dumps(mcporter_config, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return {"status": "success", "message": f"已删除 MCP 服务: {name}"}
 
 
 class SkillImportRequest(BaseModel):

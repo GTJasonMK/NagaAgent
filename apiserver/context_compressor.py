@@ -4,15 +4,15 @@
 
 两种压缩场景：
 1. **启动压缩**：每次新会话启动时，将上一个会话的历史消息压缩为摘要，
-   注入 system prompt 的 <compact> 标签中。
+   注入 system prompt 的 <compress> 标签中。
 2. **运行时压缩**：agentic loop 每轮开始前检查，当总 token 超过阈值时
    压缩早期消息，防止超长上下文导致 API 报错。
 
 压缩后的摘要格式：
     以下是上次对话的压缩记录：
-    <compact>
+    <compress>
     {摘要文本}
-    </compact>
+    </compress>
 """
 
 import json
@@ -34,7 +34,7 @@ MAX_KEEP_LOOPS = 10             # 最多保留的最近 loop 数
 MAX_KEEP_TOKENS = 10_000        # 保留区 token 上限
 COMPRESS_MODEL = "gpt-4.1-nano"
 
-COMPACT_MARKER = "以下是上次对话的压缩记录："
+COMPRESS_MARKER = "以下是上次对话的压缩记录："
 
 SUMMARIZE_PROMPT = """\
 你是对话状态压缩器。你的任务是将对话历史压缩为一份结构化的工作状态记录，\
@@ -109,27 +109,27 @@ def _msg_text(msg: Dict) -> str:
 
 async def compress_for_startup(
     prev_messages: List[Dict],
-    previous_compact: str = "",
+    previous_compress: str = "",
 ) -> Optional[str]:
     """将上一个会话的消息 + 更早的压缩记录合并压缩为新的摘要。
 
-    滚动继承：previous_compact 是上一个 session 存储的压缩结果，
+    滚动继承：previous_compress 是上一个 session 存储的压缩结果，
     包含更早对话的累积上下文。新摘要会继承其中仍有效的信息。
 
     Args:
         prev_messages: 上一个会话的原始消息列表
-        previous_compact: 上一个会话继承的压缩记录（可为空）
+        previous_compress: 上一个会话继承的压缩记录（可为空）
 
     Returns:
         压缩后的摘要文本，失败返回 None
     """
-    if not prev_messages and not previous_compact:
+    if not prev_messages and not previous_compress:
         return None
 
-    # 组装压缩输入：旧 compact + 新对话
+    # 组装压缩输入：旧压缩记录 + 新对话
     parts = []
-    if previous_compact:
-        parts.append(f"=== 更早对话的压缩记录 ===\n{previous_compact}")
+    if previous_compress:
+        parts.append(f"=== 更早对话的压缩记录 ===\n{previous_compress}")
     if prev_messages:
         conversation_text = _format_messages_for_summary(prev_messages)
         parts.append(f"=== 最近一次对话的内容 ===\n{conversation_text}")
@@ -139,15 +139,15 @@ async def compress_for_startup(
     if summary:
         logger.info(
             f"[启动压缩] 压缩完成: {len(prev_messages)} 条消息"
-            f"{f' + {len(previous_compact)} 字旧摘要' if previous_compact else ''}"
+            f"{f' + {len(previous_compress)} 字旧摘要' if previous_compress else ''}"
             f" → {len(summary)} 字新摘要"
         )
     return summary
 
 
-def build_compact_block(summary: str) -> str:
-    """构建注入 system prompt 的 <compact> 文本块"""
-    return f"\n\n{COMPACT_MARKER}\n<compact>\n{summary}\n</compact>"
+def build_compress_block(summary: str) -> str:
+    """构建注入 system prompt 的 <compress> 文本块"""
+    return f"\n\n{COMPRESS_MARKER}\n<compress>\n{summary}\n</compress>"
 
 
 # ── Loop 切分 ──
@@ -260,27 +260,27 @@ async def compress_context(messages: List[Dict]) -> CompressResult:
         events.append(_sse("compress_end", text="压缩失败，使用原始上下文"))
         return CompressResult(messages=messages, sse_events=events)
 
-    # ── 5. 组装压缩后的消息：摘要写入 system prompt 的 <compact> 标签 ──
+    # ── 5. 组装压缩后的消息：摘要写入 system prompt 的 <compress> 标签 ──
     compressed = []
     if system_msg:
         # 将摘要追加到 system prompt 内部
         sp_content = system_msg["content"]
-        # 如果已有 <compact> 块，替换；否则追加
-        if "<compact>" in sp_content and "</compact>" in sp_content:
+        # 如果已有 <compress> 块，替换；否则追加
+        if "<compress>" in sp_content and "</compress>" in sp_content:
             import re
             sp_content = re.sub(
-                r"以下是上次对话的压缩记录：\s*<compact>[\s\S]*?</compact>",
-                f"{COMPACT_MARKER}\n<compact>\n{summary}\n</compact>",
+                r"以下是上次对话的压缩记录：\s*<compress>[\s\S]*?</compress>",
+                f"{COMPRESS_MARKER}\n<compress>\n{summary}\n</compress>",
                 sp_content,
             )
         else:
-            sp_content += build_compact_block(summary)
+            sp_content += build_compress_block(summary)
         compressed.append({"role": "system", "content": sp_content})
     else:
         # 无 system prompt 时作为独立 system 消息
         compressed.append({
             "role": "system",
-            "content": f"{COMPACT_MARKER}\n<compact>\n{summary}\n</compact>",
+            "content": f"{COMPRESS_MARKER}\n<compress>\n{summary}\n</compress>",
         })
     compressed.extend(recent_messages)
 

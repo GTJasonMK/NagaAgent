@@ -299,6 +299,8 @@ export class CoreApiClient extends ApiClient {
       description: string
       source: 'builtin' | 'mcporter'
       available: boolean
+      enabled: boolean
+      config?: Record<string, any>
     }>
   }> {
     return this.instance.get('/mcp/services')
@@ -308,7 +310,25 @@ export class CoreApiClient extends ApiClient {
     status: string
     message: string
   }> {
-    return this.instance.post('/mcp/import', { name, config })
+    return this.instance.post('/mcp/import', { name, config }, {
+      transformRequest: [(data: any) => JSON.stringify(data)],
+    })
+  }
+
+  updateMcpService(name: string, body: Record<string, any>): Promise<{
+    status: string
+    message: string
+  }> {
+    return this.instance.put(`/mcp/services/${encodeURIComponent(name)}`, body, {
+      transformRequest: [(data: any) => JSON.stringify(data)],
+    })
+  }
+
+  deleteMcpService(name: string): Promise<{
+    status: string
+    message: string
+  }> {
+    return this.instance.delete(`/mcp/services/${encodeURIComponent(name)}`)
   }
 
   importCustomSkill(name: string, content: string): Promise<{

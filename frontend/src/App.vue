@@ -189,6 +189,12 @@ function enterMainContent() {
 watch(sessionRestored, (restored) => {
   if (restored) {
     toast.add({ severity: 'info', summary: '已恢复登录状态', detail: nagaUser.value?.username, life: 3000 })
+    // 如果登录弹窗已显示（splash 结束时 fetchMe 尚未完成），自动关闭并进入主界面
+    if (showLoginDialog.value) {
+      showLoginDialog.value = false
+      setAuthExpiredSuppressed(false)
+      enterMainContent()
+    }
   }
 })
 

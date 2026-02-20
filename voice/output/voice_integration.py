@@ -254,7 +254,7 @@ class VoiceIntegration:
                 "speed": config.tts.default_speed
             }
 
-            # 认证态 → NagaModel 网关；否则 → 本地 Flask
+            # 认证态 → NagaModel 网关；否则 → 本地 FastAPI
             from apiserver import naga_auth
             if naga_auth.is_authenticated():
                 tts_url = naga_auth.NAGA_MODEL_URL + "/audio/speech"
