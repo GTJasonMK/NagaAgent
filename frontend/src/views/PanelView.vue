@@ -30,7 +30,7 @@ const { rx, ry, tx, ty } = useParallax({ rotateX: 5, rotateY: 4, translateX: 15,
         <div class="absolute -left-12 right-1/2 top-2 bottom-2">
           <ArkButton class="size-full bg-#f00! z-1" disabled>
             <div class="size-full">
-              娜迦EXE测试版
+              娜迦协议Demo
             </div>
           </ArkButton>
         </div>
