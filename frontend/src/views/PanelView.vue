@@ -9,6 +9,8 @@ import toolkit from '@/assets/icons/toolkit.png'
 import ArkButton from '@/components/ArkButton.vue'
 import { useParallax } from '@/composables/useParallax'
 
+const musicBoxIcon = '/assets/Layer 8 (merged).png'
+
 const { height } = useWindowSize()
 const scale = computed(() => height.value / 720)
 
@@ -42,17 +44,25 @@ const { rx, ry, tx, ty } = useParallax({ rotateX: 5, rotateY: 4, translateX: 15,
         <ArkButton :icon="toolkit" title="技能<br>工坊" @click="useLink({ to: '/skill' }).navigate" />
       </div>
       <div class="grid grid-cols-2">
-        <div class="flex flex-col">
-          <div class="bg-#363837 text-white p-2 text-sm">
-            参数设置
-          </div>
-          <div class="grow grid grid-cols-2 font-serif font-bold lh-none">
-            <ArkButton @click="useLink({ to: '/model' }).navigate">
-              <div class="size-full text-lg">模型链接</div>
-            </ArkButton>
-            <ArkButton @click="useLink({ to: '/memory' }).navigate">
-              <div class="size-full text-lg">记忆链接</div>
-            </ArkButton>
+        <div class="flex">
+          <button
+            class="border-none text-white shadow bg-#363837 bg-op-90 backdrop-blur-md transition relative shrink-0 flex flex-col items-center justify-center p-2 hover:brightness-105"
+          >
+            <img :src="musicBoxIcon" class="w-12 h-12 mb-1">
+            <div class="text-lg font-serif font-bold lh-none">音乐盒</div>
+          </button>
+          <div class="flex flex-col flex-1">
+            <div class="bg-#363837 text-white p-2 text-sm">
+              参数设置
+            </div>
+            <div class="grow grid grid-cols-2 font-serif font-bold lh-none">
+              <ArkButton @click="useLink({ to: '/model' }).navigate">
+                <div class="size-full text-lg">模型链接</div>
+              </ArkButton>
+              <ArkButton @click="useLink({ to: '/memory' }).navigate">
+                <div class="size-full text-lg">记忆链接</div>
+              </ArkButton>
+            </div>
           </div>
         </div>
         <ArkButton :icon="chip" title="终端<br>设置" @click="useLink({ to: '/config' }).navigate" />
