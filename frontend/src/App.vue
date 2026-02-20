@@ -25,6 +25,7 @@ import { ACCESS_TOKEN, authExpired, setAuthExpiredSuppressed } from '@/api'
 import { clearExpression, setExpression } from '@/utils/live2dController'
 import { initParallax, destroyParallax } from '@/utils/parallax'
 import { playBgm, playClickEffect, stopBgm } from '@/composables/useAudio'
+import { useMusicPlayer } from '@/composables/useMusicPlayer'
 
 const isElectron = !!window.electronAPI
 const isMac = window.electronAPI?.platform === 'darwin'
@@ -32,6 +33,7 @@ const isMac = window.electronAPI?.platform === 'darwin'
 const titleBarPadding = isElectron ? (isMac ? '28px' : '32px') : '0px'
 
 const toast = useToast()
+useMusicPlayer() // 注册全局音乐播放器，主界面 BGM 与音律坊共用
 
 const { width, height } = useWindowSize()
 const scale = computed(() => height.value / (10000 - CONFIG.value.web_live2d.model.size))

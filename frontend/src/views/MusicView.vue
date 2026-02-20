@@ -1,154 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import BoxContainer from '@/components/BoxContainer.vue'
 import musicBox from '@/assets/icons/music-box.svg'
+import { useMusicPlayer } from '@/composables/useMusicPlayer'
 
-interface Track {
-  id: number
-  title: string
-  duration: string
-  src: string
-}
-
-const tracks = ref<Track[]>([
-  {
-    id: 1,
-    title: '日常的小曲 · Everyday Tune',
-    duration: '03:24',
-    src: '/voices/background/8.日常的小曲.mp3',
-  },
-  {
-    id: 2,
-    title: '快乐的小曲 · Happy Tune',
-    duration: '03:07',
-    src: '/voices/background/9.快乐的小曲.mp3',
-  },
-])
-
-const currentIndex = ref(0)
-const isPlaying = ref(false)
-
-// 播放顺序：列表循环 / 随机 / 单曲循环
-const playMode = ref<'list' | 'shuffle' | 'single'>('list')
-const playModeLabel = computed(() => {
-  if (playMode.value === 'shuffle')
-    return '随机播放'
-  if (playMode.value === 'single')
-    return '单曲循环'
-  return '列表循环'
-})
-
-// 音频实例和进度
-const audio = ref<HTMLAudioElement | null>(null)
-const duration = ref(0)
-const currentTime = ref(0)
-
-const currentTrack = computed(() => tracks.value[currentIndex.value])
-const progress = computed(() => (duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0))
-
-function setupAudioForTrack() {
-  if (!audio.value || !currentTrack.value)
-    return
-  audio.value.src = currentTrack.value.src
-  audio.value.currentTime = 0
-  duration.value = 0
-  currentTime.value = 0
-  if (isPlaying.value)
-    audio.value.play().catch(() => { isPlaying.value = false })
-}
-
-function togglePlay() {
-  if (!audio.value) return
-
-  if (audio.value.paused) {
-    audio.value.play().then(() => {
-      isPlaying.value = true
-    }).catch(() => {
-      isPlaying.value = false
-    })
-  }
-  else {
-    audio.value.pause()
-    isPlaying.value = false
-  }
-}
-
-function prev() {
-  if (!tracks.value.length) return
-  currentIndex.value = (currentIndex.value - 1 + tracks.value.length) % tracks.value.length
-  setupAudioForTrack()
-}
-
-function next() {
-  if (!tracks.value.length) return
-
-  if (playMode.value === 'shuffle') {
-    if (tracks.value.length === 1) return
-    let idx = currentIndex.value
-    while (idx === currentIndex.value)
-      idx = Math.floor(Math.random() * tracks.value.length)
-    currentIndex.value = idx
-  }
-  else {
-    currentIndex.value = (currentIndex.value + 1) % tracks.value.length
-  }
-
-  setupAudioForTrack()
-}
-
-function handleEnded() {
-  if (playMode.value === 'single') {
-    // 单曲循环
-    if (audio.value) {
-      audio.value.currentTime = 0
-      audio.value.play().catch(() => { isPlaying.value = false })
-    }
-  }
-  else {
-    next()
-  }
-}
-
-function togglePlayMode() {
-  if (playMode.value === 'list')
-    playMode.value = 'shuffle'
-  else if (playMode.value === 'shuffle')
-    playMode.value = 'single'
-  else
-    playMode.value = 'list'
-}
-
-onMounted(() => {
-  audio.value = new Audio()
-  if (!audio.value)
-    return
-
-  audio.value.addEventListener('timeupdate', () => {
-    if (!audio.value) return
-    currentTime.value = audio.value.currentTime
-    duration.value = audio.value.duration || duration.value
-  })
-  audio.value.addEventListener('loadedmetadata', () => {
-    if (!audio.value) return
-    duration.value = audio.value.duration
-  })
-  audio.value.addEventListener('ended', handleEnded)
-
-  setupAudioForTrack()
-})
-
-onBeforeUnmount(() => {
-  if (!audio.value)
-    return
-  audio.value.pause()
-  audio.value.src = ''
-  audio.value.load()
-  audio.value = null
-})
-
-watch(currentTrack, () => {
-  setupAudioForTrack()
-})
+const {
+  tracks,
+  currentTrack,
+  isPlaying,
+  progress,
+  playModeLabel,
+  togglePlay,
+  prev,
+  next,
+  togglePlayMode,
+  duration,
+  currentTime,
+} = useMusicPlayer()
 </script>
 
 <template>

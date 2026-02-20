@@ -44,6 +44,9 @@ export function chatStream(content: string, options?: { skill?: string, images?:
       return 'normal'
     }
 
+    // 记录当前轮次 content 流的起始位置，content_clean 只替换当前轮的 LLM 输出
+    let roundContentStart = 0
+
     for await (const chunk of response) {
       if (chunk.type === 'reasoning') {
         message.reasoning = (message.reasoning || '') + chunk.text
@@ -58,8 +61,8 @@ export function chatStream(content: string, options?: { skill?: string, images?:
         }
       }
       else if (chunk.type === 'content_clean') {
-        // 后端解析出工具调用后，发送清理后的纯文本替换掉含有 ```tool``` 块的原文
-        message.content = chunk.text || ''
+        // 仅替换当前轮次的 LLM 输出（从 roundContentStart 开始），保留之前轮次的工具通知
+        message.content = message.content.substring(0, roundContentStart) + (chunk.text || '')
         spokenContent = chunk.text || ''
       }
       else if (chunk.type === 'tool_calls') {
@@ -88,10 +91,14 @@ export function chatStream(content: string, options?: { skill?: string, images?:
           message.content += `\n> ${status} ${label}\n`
         }
         message.content += '\n'
+        // 工具结果追加完毕，更新下一轮 content 的起始位置
+        roundContentStart = message.content.length
       }
       else if (chunk.type === 'round_start' && (chunk.round ?? 0) > 1) {
         // 多轮分隔
         message.content += '\n---\n\n'
+        // 新一轮开始，更新 content 起始位置
+        roundContentStart = message.content.length
       }
       else if (chunk.type === 'auth_expired') {
         // LLM 认证失败，触发重新登录
