@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import BoxContainer from '@/components/BoxContainer.vue'
-import musicBox from '@/assets/icons/music-box.svg'
+import musicBox from '@/assets/icons/音乐盒.png'
 
 const router = useRouter()
 
@@ -16,7 +16,8 @@ interface Track {
 function parseDisplayName(filename: string): string {
   const name = filename.replace(/\.mp3$/i, '')
   const match = name.match(/^\d+\.(.+)$/)
-  return match ? match[1] : name
+  return match ? match[1] || name : name
+
 }
 
 function loadPlaylist(): Track[] {

@@ -21,6 +21,8 @@ const router = createRouter({
     { path: '/config', component: () => import('@/views/ConfigView.vue') },
     { path: '/music', component: () => import('@/views/MusicView.vue') },
     { path: '/music/edit', component: () => import('@/views/MusicEditView.vue') },
+    { path: '/market', component: () => import('@/views/MarketView.vue') },
+    { path: '/float', component: () => import('@/views/FloatingView.vue') },
   ],
 })
 
