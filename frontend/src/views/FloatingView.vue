@@ -905,6 +905,7 @@ useEventListener('token', () => {
   border-radius: 50%;
   cursor: pointer;
   touch-action: none;
+  transition: filter 0.2s ease;
 }
 
 /* 彩色光环（保持在窗口 100x100 内，避免方形裁切） */
@@ -973,6 +974,10 @@ useEventListener('token', () => {
   transition: border-color 0.3s;
 }
 
+.floating-ball:hover {
+  filter: brightness(1.08);
+}
+
 .floating-ball:hover .ball-ring {
   border-color: rgba(255, 255, 255, 0.4);
 }
@@ -999,6 +1004,11 @@ useEventListener('token', () => {
   cursor: pointer;
   position: relative;
   background: radial-gradient(circle at 40% 35%, #2a1810, #110901);
+  transition: filter 0.2s ease;
+}
+
+.compact-ball:hover {
+  filter: brightness(1.08);
 }
 
 /* 紧凑/完整态的球无光环，内容占满 */

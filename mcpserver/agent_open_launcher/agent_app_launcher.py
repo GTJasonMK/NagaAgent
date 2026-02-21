@@ -28,7 +28,7 @@ class AppLauncherAgent(object):
             if not tool_name:
                 error_msg = "缺少tool_name参数"
                 print(f"❌ {error_msg}")
-                return json.dumps({"success": False, "status": "error", "message": error_msg, "data": {}}, ensure_ascii=False)
+                return json.dumps({"status": "error", "message": error_msg, "data": {}}, ensure_ascii=False)
 
             if tool_name == "获取应用列表":
                 print("📋 获取应用列表")
@@ -44,7 +44,7 @@ class AppLauncherAgent(object):
                 if not app:
                     error_msg = "启动应用需要提供app参数"
                     print(f"❌ {error_msg}")
-                    return json.dumps({"success": False, "status": "error", "message": error_msg, "data": {}}, ensure_ascii=False)
+                    return json.dumps({"status": "error", "message": error_msg, "data": {}}, ensure_ascii=False)
 
                 print(f"🚀 启动应用 '{app}'")
                 result = await self._open_app(app, args)
@@ -54,14 +54,14 @@ class AppLauncherAgent(object):
             else:
                 error_msg = f"未知工具: {tool_name}。可用工具：获取应用列表、启动应用"
                 print(f"❌ {error_msg}")
-                return json.dumps({"success": False, "status": "error", "message": error_msg, "data": {}}, ensure_ascii=False)
+                return json.dumps({"status": "error", "message": error_msg, "data": {}}, ensure_ascii=False)
 
         except Exception as e:
             error_msg = f"handle_handoff异常: {str(e)}"
             print(f"❌ {error_msg}")
             import traceback
             traceback.print_exc()
-            return json.dumps({"success": False, "status": "error", "message": error_msg, "data": {}}, ensure_ascii=False)
+            return json.dumps({"status": "error", "message": error_msg, "data": {}}, ensure_ascii=False)
 
     async def _get_apps_list(self) -> dict:
         """获取应用列表工具 - 返回可用应用列表供用户选择"""
@@ -69,9 +69,8 @@ class AppLauncherAgent(object):
             app_info = await self.scanner.get_app_info_for_llm()
 
             return {
-                "success": True,
-                "status": "apps_ready",
-                "message": f"✅ 已获取到 {app_info['total_count']} 个可用应用。请从下方列表中选择要启动的应用，然后使用启动应用工具。",
+                "status": "success",
+                "message": f"已获取到 {app_info['total_count']} 个可用应用。请从列表中选择要启动的应用，然后使用启动应用工具。",
                 "data": {
                     "total_count": app_info['total_count'],
                     "apps": app_info['apps'][:30],
@@ -89,7 +88,6 @@ class AppLauncherAgent(object):
             }
         except Exception as e:
             return {
-                "success": False,
                 "status": "error",
                 "message": f"获取应用列表失败: {str(e)}",
                 "data": {}
@@ -106,9 +104,8 @@ class AppLauncherAgent(object):
                 available_apps = app_info["apps"][:20]
 
                 return {
-                    "success": False,
-                    "status": "app_not_found",
-                    "message": f"❌ 未找到应用 '{app_name}'。请从以下可用应用中选择，然后使用以下格式重新调用：",
+                    "status": "error",
+                    "message": f"未找到应用 '{app_name}'。请从可用应用列表中选择正确的名称后重试。",
                     "data": {
                         "requested_app": app_name,
                         "available_apps": available_apps,
@@ -138,9 +135,8 @@ class AppLauncherAgent(object):
                 return result
             except Exception as e:
                 return {
-                    "success": False,
-                    "status": "start_failed",
-                    "message": f"启动应用失败: {str(e)}",
+                    "status": "error",
+                    "message": f"启动应用 '{app_name}' 失败: {str(e)}",
                     "data": {
                         "app_name": app_name,
                         "exe_path": app_info["path"],
@@ -151,7 +147,6 @@ class AppLauncherAgent(object):
 
         except Exception as e:
             return {
-                "success": False,
                 "status": "error",
                 "message": f"启动应用时发生错误: {str(e)}",
                 "data": {}
@@ -171,8 +166,7 @@ class AppLauncherAgent(object):
             subprocess.Popen(cmd, shell=True)
 
             return {
-                "success": True,
-                "status": "app_started",
+                "status": "success",
                 "message": f"已成功通过快捷方式启动应用: {app_info['name']}",
                 "data": {
                     "app_name": app_info["name"],
@@ -184,8 +178,7 @@ class AppLauncherAgent(object):
             }
         except Exception as e:
             return {
-                "success": False,
-                "status": "start_failed",
+                "status": "error",
                 "message": f"通过快捷方式启动应用失败: {str(e)}",
                 "data": {
                     "app_name": app_info["name"],
@@ -208,8 +201,7 @@ class AppLauncherAgent(object):
             subprocess.Popen(cmd, shell=False)
 
             return {
-                "success": True,
-                "status": "app_started",
+                "status": "success",
                 "message": f"已成功启动应用: {app_info['name']}",
                 "data": {
                     "app_name": app_info["name"],
@@ -220,8 +212,7 @@ class AppLauncherAgent(object):
             }
         except Exception as e:
             return {
-                "success": False,
-                "status": "start_failed",
+                "status": "error",
                 "message": f"启动应用失败: {str(e)}",
                 "data": {
                     "app_name": app_info["name"],

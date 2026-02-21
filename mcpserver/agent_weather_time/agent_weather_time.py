@@ -107,23 +107,23 @@ class WeatherTimeTool:
         city_code = codes_map.get(f'{province}{city_name}')
 
         if not city_code:
-            return {'status': 'error', 'message': f'未找到城市编码或该城市不存在: {city_name}, 确保city格式为{{省 市}}, 如:湖北 武汉, 直辖市请重复两遍市名, 如:北京 北京'}
+            return {'status': 'error', 'message': f'未找到城市编码或该城市不存在: {city_name}, 确保city格式为{{省 市}}, 如:湖北 武汉, 直辖市请重复两遍市名, 如:北京 北京', 'data': {}}
 
         now, d3, d15 = await self.get_weather(city_code)
 
         # 今日天气查询
         if action in ['today_weather', 'current_weather', 'today']:
-            return {'city': city_name, 'response': now}
+            return {'status': 'success', 'message': f'{city_name}今日天气查询成功', 'data': {'city': city_name, 'weather': now}}
 
         # 未来天气查询
         elif action in ['forecast_weather', 'future_weather', 'forecast', 'weather_forecast']:
-            return {'city': city_name, 'response': d15}
+            return {'status': 'success', 'message': f'{city_name}天气预报查询成功', 'data': {'city': city_name, 'forecast': d15}}
 
         elif action in ['time', 'get_time', 'current_time']:
             current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             return {
-                'status': 'ok',
-                'message': '当前系统时间',
+                'status': 'success',
+                'message': f'当前系统时间: {current_time}',
                 'data': {
                     'time': current_time,
                     'city': city_name,
@@ -131,7 +131,7 @@ class WeatherTimeTool:
                 }
             }
         else:
-            return {'status': 'error', 'message': f'未知操作: {action}'}
+            return {'status': 'error', 'message': f'未知操作: {action}', 'data': {}}
 
 
 class WeatherTimeAgent:
