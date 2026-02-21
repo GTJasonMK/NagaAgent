@@ -50,6 +50,9 @@ app.whenReady().then(() => {
   // Create main window
   const win = createWindow()
 
+  // 透明无边框窗口在 Windows 上 unmaximize 后系统不可靠地还原尺寸，手动保存/还原
+  let preMaximizeBounds: Electron.Rectangle | null = null
+
   // Create system tray
   createTray()
 
@@ -66,7 +69,13 @@ app.whenReady().then(() => {
   ipcMain.on('window:maximize', () => {
     const w = getMainWindow()
     if (w) {
-      w.isMaximized() ? w.unmaximize() : w.maximize()
+      if (w.isMaximized()) {
+        w.unmaximize()
+      }
+      else {
+        preMaximizeBounds = w.getBounds()
+        w.maximize()
+      }
     }
   })
   ipcMain.on('window:close', () => {
@@ -86,6 +95,19 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('window:isMaximized', () => getMainWindow()?.isMaximized() ?? false)
+  ipcMain.handle('window:getBounds', () => getMainWindow()?.getBounds() ?? { x: 0, y: 0, width: 1280, height: 800 })
+  ipcMain.on('window:setBounds', (_event, bounds: { x?: number, y?: number, width?: number, height?: number }) => {
+    const win = getMainWindow()
+    if (!win || win.isMaximized()) return
+    const current = win.getBounds()
+    const next = {
+      x: bounds.x ?? current.x,
+      y: bounds.y ?? current.y,
+      width: Math.max(800, bounds.width ?? current.width),
+      height: Math.max(600, bounds.height ?? current.height),
+    }
+    win.setBounds(next)
+  })
 
   // 悬浮球模式控制
   ipcMain.handle('floating:enter', () => {
@@ -218,7 +240,14 @@ app.whenReady().then(() => {
   })
 
   win.on('maximize', () => win.webContents.send('window:maximized', true))
-  win.on('unmaximize', () => win.webContents.send('window:maximized', false))
+  win.on('unmaximize', () => {
+    win.webContents.send('window:maximized', false)
+    // 透明无边框窗口在 Windows 上还原尺寸不可靠，手动恢复最大化前的 bounds
+    if (preMaximizeBounds) {
+      win.setBounds(preMaximizeBounds)
+      preMaximizeBounds = null
+    }
+  })
 
   // 悬浮球展开态失焦时自动收起（由渲染进程控制是否启用）
   win.on('blur', () => {
