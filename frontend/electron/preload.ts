@@ -6,6 +6,8 @@ const electronAPI = {
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
   isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  getBounds: () => ipcRenderer.invoke('window:getBounds') as Promise<{ x: number, y: number, width: number, height: number }>,
+  setBounds: (bounds: { x?: number, y?: number, width?: number, height?: number }) => ipcRenderer.send('window:setBounds', bounds),
   quit: () => ipcRenderer.send('app:quit'),
   showContextMenu: () => ipcRenderer.send('context-menu:show'),
 

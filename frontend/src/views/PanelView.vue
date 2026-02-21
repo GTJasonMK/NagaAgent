@@ -79,7 +79,7 @@ function enterFloatingMode() {
         <ArkButton class="min-w-0" :icon="chip" title="终端<br>设置" @click="useLink({ to: '/config' }).navigate" />
       </div>
       <div class="grid grid-cols-2 -translate-x-1/5">
-        <ArkButton class="market-btn" :icon="market" title="枢机<br>集市" />
+        <ArkButton class="market-btn" :icon="market" title="枢机<br>集市" @click="useLink({ to: '/market' }).navigate" />
         <ArkButton class="music-btn" :icon="musicBoxIcon" title="音律坊" @click="useLink({ to: '/music' }).navigate" />
       </div>
     </div>

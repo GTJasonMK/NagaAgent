@@ -26,9 +26,14 @@ import { clearExpression, setExpression } from '@/utils/live2dController'
 import { initParallax, destroyParallax } from '@/utils/parallax'
 import { playBgm, playClickEffect, stopBgm } from '@/composables/useAudio'
 import { useMusicPlayer } from '@/composables/useMusicPlayer'
+import { useElectron } from '@/composables/useElectron'
+import WindowResizeHandles from '@/components/WindowResizeHandles.vue'
 
 const isElectron = !!window.electronAPI
+const { isMaximized } = useElectron()
 const isMac = window.electronAPI?.platform === 'darwin'
+
+const showResizeHandles = computed(() => isElectron && !isFloatingMode.value && !isMaximized.value)
 // macOS hiddenInset title bar is 28px, Windows/Linux custom title bar is 32px
 const titleBarPadding = isElectron ? (isMac ? '28px' : '32px') : '0px'
 
@@ -266,6 +271,7 @@ onUnmounted(() => {
   <!-- 经典模式 -->
   <template v-else>
     <TitleBar />
+    <WindowResizeHandles :visible="showResizeHandles" :title-bar-height="isMac ? 28 : 32" />
     <Toast position="top-center" />
     <div class="h-full sunflower" :style="{ paddingTop: titleBarPadding }">
       <!-- Live2D 层：启动时 z-10（在 SplashScreen 遮罩之间），之后降到 -z-1 -->
