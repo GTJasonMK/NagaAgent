@@ -42,11 +42,14 @@ class GuideTools:
         )
         result = await self.guide_service.ask(request)
         return {
-            "status": "ok",
-            "response": result.content,
-            "query_mode": result.query_mode,
-            "references": [item.model_dump() for item in result.references],
-            "metadata": result.metadata,
+            "status": "success",
+            "message": "攻略查询成功",
+            "data": {
+                "response": result.content,
+                "query_mode": result.query_mode,
+                "references": [item.model_dump() for item in result.references],
+                "metadata": result.metadata,
+            },
         }
 
     async def ask_guide_with_screenshot(
