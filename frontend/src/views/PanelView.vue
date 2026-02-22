@@ -97,7 +97,7 @@ function enterFloatingMode() {
 }
 
 .music-btn :deep(img) {
-  filter: brightness(1.3) opacity(0.25);
+  filter: brightness(1.3) opacity(0.2);
   width: 4.5rem;
   height: 4.5rem;
   object-fit: contain;
