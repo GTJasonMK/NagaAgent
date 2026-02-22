@@ -8,10 +8,9 @@ import chip from '@/assets/icons/chip.png'
 import naga from '@/assets/icons/naga.png'
 import toolkit from '@/assets/icons/toolkit.png'
 import market from '@/assets/icons/market.svg'
+import musicBoxIcon from '@/assets/icons/音乐盒.png'
 import ArkButton from '@/components/ArkButton.vue'
 import { useParallax } from '@/composables/useParallax'
-
-const musicBoxIcon = '/assets/Layer 8 (merged).png'
 
 const { height } = useWindowSize()
 const scale = computed(() => height.value / 720)
@@ -79,7 +78,7 @@ function enterFloatingMode() {
         <ArkButton class="min-w-0" :icon="chip" title="终端<br>设置" @click="useLink({ to: '/config' }).navigate" />
       </div>
       <div class="grid grid-cols-2 -translate-x-1/5">
-        <ArkButton class="market-btn" :icon="market" title="枢机<br>集市" @click="useLink({ to: '/market' }).navigate" />
+        <ArkButton class="market-btn" :icon="market" title="枢机<br>集市" disabled />
         <ArkButton class="music-btn" :icon="musicBoxIcon" title="音律坊" @click="useLink({ to: '/music' }).navigate" />
       </div>
     </div>
@@ -87,8 +86,21 @@ function enterFloatingMode() {
 </template>
 
 <style scoped>
-.market-btn :deep(img),
+.market-btn :deep(img) {
+  filter: grayscale(1) brightness(0.6) opacity(0.5);
+}
+
+.market-btn {
+  background-color: #d9d9d9 !important;
+  color: #a0a0a0 !important;
+  cursor: not-allowed !important;
+}
+
 .music-btn :deep(img) {
-  filter: grayscale(1) brightness(0.78) opacity(0.9);
+  filter: none;
+  width: 5.5rem;
+  height: 5.5rem;
+  object-fit: contain;
+  right: 0.6rem;
 }
 </style>
