@@ -41,7 +41,7 @@ const toast = useToast()
 let previousUserName = CONFIG.value.ui.user_name
 watch(() => CONFIG.value.ui.user_name, (newVal) => {
   if (newVal.includes('柏斯阔落')) {
-    toast.add({ severity: 'info', summary: '系统提示', detail: '系统抗拒了修改为这个名称', life: 3000 })
+    toast.add({ severity: 'info', summary: '系统提示', detail: '此名词不可用', life: 3000 })
     CONFIG.value.ui.user_name = '用户'
   }
   else {

@@ -8,7 +8,7 @@ import chip from '@/assets/icons/chip.png'
 import naga from '@/assets/icons/naga.png'
 import toolkit from '@/assets/icons/toolkit.png'
 import market from '@/assets/icons/market.svg'
-import musicBoxIcon from '@/assets/icons/音乐盒.png'
+import musicBoxIcon from '@/assets/icons/musicbox3.png'
 import ArkButton from '@/components/ArkButton.vue'
 import { useParallax } from '@/composables/useParallax'
 
@@ -97,9 +97,9 @@ function enterFloatingMode() {
 }
 
 .music-btn :deep(img) {
-  filter: none;
-  width: 5.5rem;
-  height: 5.5rem;
+  filter: brightness(1.3) opacity(0.25);
+  width: 4.5rem;
+  height: 4.5rem;
   object-fit: contain;
   right: 0.6rem;
 }
