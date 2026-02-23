@@ -2,7 +2,7 @@
 import { onKeyStroke, useEventListener } from '@vueuse/core'
 import { nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import API from '@/api/core'
-import { authExpired } from '@/api'
+import { ACCESS_TOKEN, authExpired } from '@/api'
 import BoxContainer from '@/components/BoxContainer.vue'
 import MessageItem from '@/components/MessageItem.vue'
 import { startToolPolling, stopToolPolling, toolMessage } from '@/composables/useToolStatus'
@@ -100,8 +100,14 @@ export function chatStream(content: string, options?: { skill?: string, images?:
         // 新一轮开始，更新 content 起始位置
         roundContentStart = message.content.length
       }
+      else if (chunk.type === 'token_refreshed') {
+        // 后端刷新了 token，同步到前端（防止后续轮询请求用旧 token 覆盖）
+        if (chunk.text) {
+          ACCESS_TOKEN.value = chunk.text
+        }
+      }
       else if (chunk.type === 'auth_expired') {
-        // LLM 认证失败，触发重新登录
+        // 后端 LLM 认证失败且刷新也失败，触发重新登录
         authExpired.value = true
         message.content += chunk.text || '登录已过期，请重新登录'
       }

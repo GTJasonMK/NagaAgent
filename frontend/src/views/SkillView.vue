@@ -30,15 +30,18 @@ const editingMcp = ref<{ name: string, displayName: string, description: string,
 const mcpEnabledCount = computed(() => mcpServices.value.filter(s => s.enabled).length)
 const mcpTotalCount = computed(() => mcpServices.value.length)
 
-function loadMcpServices() {
+async function loadMcpServices() {
   mcpLoading.value = true
-  API.getMcpServices().then((res) => {
+  try {
+    const res = await API.getMcpServices()
     mcpServices.value = res.services ?? []
-  }).catch(() => {
+  }
+  catch {
     mcpServices.value = []
-  }).finally(() => {
+  }
+  finally {
     mcpLoading.value = false
-  })
+  }
 }
 loadMcpServices()
 
@@ -78,7 +81,7 @@ async function onMcpConfirm(data: { name: string, displayName: string, descripti
       }
     }
     showMcpDialog.value = false
-    loadMcpServices()
+    await loadMcpServices()
   }
   catch (e: any) {
     alert(`操作失败: ${e.message}`)

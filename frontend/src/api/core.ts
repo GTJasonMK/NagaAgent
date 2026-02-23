@@ -303,7 +303,9 @@ export class CoreApiClient extends ApiClient {
       config?: Record<string, any>
     }>
   }> {
-    return this.instance.get('/mcp/services')
+    return this.instance.get('/mcp/services', {
+      params: { _t: Date.now() },
+    })
   }
 
   importMcpConfig(name: string, config: Record<string, any>): Promise<{
