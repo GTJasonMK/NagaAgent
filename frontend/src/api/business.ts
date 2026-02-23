@@ -7,7 +7,9 @@ const businessClient = axios.create({
   timeout: 15_000,
   headers: { 'Content-Type': 'application/json' },
   transformResponse: [(data: string) => {
-    try { return camelcaseKeys(JSON.parse(data), { deep: true }) }
+    try {
+      return camelcaseKeys(JSON.parse(data), { deep: true })
+    }
     catch { return data }
   }],
 })

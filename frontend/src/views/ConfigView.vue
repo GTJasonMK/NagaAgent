@@ -2,12 +2,12 @@
 import { useStorage } from '@vueuse/core'
 import { Accordion, Button, Divider, InputNumber, InputText, Select, Slider, Textarea, ToggleSwitch } from 'primevue'
 import { useToast } from 'primevue/usetoast'
-import { ref, computed, onMounted, useTemplateRef, watch } from 'vue'
+import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 import BoxContainer from '@/components/BoxContainer.vue'
 import ConfigGroup from '@/components/ConfigGroup.vue'
 import ConfigItem from '@/components/ConfigItem.vue'
+import { audioSettings, effectFileOptions, wakeVoiceOptions } from '@/composables/useAudio'
 import { nagaUser } from '@/composables/useAuth'
-import { audioSettings, wakeVoiceOptions, effectFileOptions } from '@/composables/useAudio'
 import { CONFIG, DEFAULT_CONFIG, DEFAULT_MODEL, MODELS, SYSTEM_PROMPT } from '@/utils/config'
 import { trackingCalibration } from '@/utils/live2dController'
 
@@ -16,7 +16,7 @@ const characterLocked = computed(() => !!CONFIG.value.system.active_character)
 const characterLockedHint = computed(() =>
   characterLocked.value
     ? `由角色「${CONFIG.value.system.active_character}.json」管理，不可直接修改`
-    : undefined
+    : undefined,
 )
 
 const selectedModel = ref(Object.entries(MODELS).find(([_, model]) => {
@@ -48,14 +48,14 @@ const accordionValue = useStorage('accordion-config', [])
 
 const toast = useToast()
 
-let previousUserName = CONFIG.value.ui.user_name
+let _previousUserName = CONFIG.value.ui.user_name
 watch(() => CONFIG.value.ui.user_name, (newVal) => {
   if (newVal.includes('柏斯阔落')) {
     toast.add({ severity: 'info', summary: '系统提示', detail: '此名词不可用', life: 3000 })
     CONFIG.value.ui.user_name = '用户'
   }
   else {
-    previousUserName = newVal
+    _previousUserName = newVal
   }
 })
 

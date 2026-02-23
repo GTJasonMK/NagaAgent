@@ -1,14 +1,14 @@
 <script lang="ts">
 import { onKeyStroke, useEventListener } from '@vueuse/core'
 import { nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
-import API from '@/api/core'
 import { ACCESS_TOKEN, authExpired } from '@/api'
+import API from '@/api/core'
 import BoxContainer from '@/components/BoxContainer.vue'
 import MessageItem from '@/components/MessageItem.vue'
 import { startToolPolling, stopToolPolling, toolMessage } from '@/composables/useToolStatus'
 import { CONFIG } from '@/utils/config'
 import { live2dState, setEmotion } from '@/utils/live2dController'
-import { CURRENT_SESSION_ID, IS_TEMPORARY_SESSION, formatRelativeTime, loadCurrentSession, MESSAGES, newSession, switchSession } from '@/utils/session'
+import { CURRENT_SESSION_ID, formatRelativeTime, IS_TEMPORARY_SESSION, loadCurrentSession, MESSAGES, newSession, switchSession } from '@/utils/session'
 import { isPlaying, speak } from '@/utils/tts'
 
 export function chatStream(content: string, options?: { skill?: string, images?: string[] }) {
@@ -36,9 +36,11 @@ export function chatStream(content: string, options?: { skill?: string, images?:
     function parseEmotionFromText(text: string): 'normal' | 'positive' | 'negative' | 'surprise' {
       if (text.includes('【正面情感】')) {
         return 'positive'
-      } else if (text.includes('【负面情感】')) {
+      }
+      else if (text.includes('【负面情感】')) {
         return 'negative'
-      } else if (text.includes('【惊讶情感】')) {
+      }
+      else if (text.includes('【惊讶情感】')) {
         return 'surprise'
       }
       return 'normal'
@@ -115,12 +117,17 @@ export function chatStream(content: string, options?: { skill?: string, images?:
         // 上下文压缩进度提示（覆盖式显示，compress_end 后非阻塞延迟清空）
         message.content = `> ${chunk.text}\n\n`
         if (chunk.type === 'compress_end') {
-          compressTimer = setTimeout(() => { message.content = '' }, 1200)
+          compressTimer = setTimeout(() => {
+            message.content = ''
+          }, 1200)
         }
       }
       else if (chunk.type === 'compress_info') {
         // 运行时压缩完成，在当前 assistant 消息前插入 info 标记
-        if (compressTimer) { clearTimeout(compressTimer); compressTimer = undefined }
+        if (compressTimer) {
+          clearTimeout(compressTimer)
+          compressTimer = undefined
+        }
         message.content = ''
         const idx = MESSAGES.value.indexOf(message)
         if (idx > 0) {
@@ -183,7 +190,8 @@ onUnmounted(() => {
 })
 useEventListener('token', scrollToBottom)
 onKeyStroke('Enter', (e) => {
-  if (e.isComposing) return
+  if (e.isComposing)
+    return
   sendMessage()
 })
 
@@ -345,8 +353,6 @@ function stopVoiceInput() {
   }
   isRecording.value = false
 }
-
-
 </script>
 
 <template>
@@ -435,7 +441,7 @@ function stopVoiceInput() {
         >
         <button
           class="input-icon-btn shrink-0"
-          :class="{ 'recording': isRecording }"
+          :class="{ recording: isRecording }"
           :title="isRecording ? '停止录音' : '语音输入'"
           @click="toggleVoiceInput"
         >

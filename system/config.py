@@ -7,11 +7,33 @@ NagaAgent 配置系统 - 基于Pydantic实现类型安全和验证
 import os
 import sys
 import json
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # Python < 3.11 fallback
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Callable
 from datetime import datetime
 
 IS_PACKAGED: bool = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+
+
+def get_version() -> str:
+    """从 pyproject.toml 读取版本号（唯一版本源）。
+    开发环境从项目根目录读取，PyInstaller 打包后从 _MEIPASS 读取。
+    """
+    if IS_PACKAGED:
+        pyproject = Path(sys._MEIPASS) / "pyproject.toml"
+    else:
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    try:
+        with open(pyproject, "rb") as f:
+            return tomllib.load(f)["project"]["version"]
+    except Exception:
+        return "0.0.0"
+
+
+VERSION: str = get_version()
 
 
 def _get_user_data_dir() -> Path:
@@ -167,7 +189,7 @@ def bootstrap_config_from_example(config_path: str) -> None:
 class SystemConfig(BaseModel):
     """系统基础配置"""
 
-    version: str = Field(default="5.0.0", description="系统版本号")
+    version: str = Field(default_factory=lambda: VERSION, description="系统版本号")
     ai_name: str = Field(default="娜迦日达", description="AI助手名称")
     active_character: str = Field(default="娜迦日达", description="当前活跃角色名称")
     base_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent, description="项目根目录")
@@ -690,7 +712,6 @@ def build_context_supplement(
     include_tool_instructions: bool = False,
     skill_name: Optional[str] = None,
     rag_section: str = "",
-    compress_section: str = "",
 ) -> str:
     """
     构建附加知识内容（追加在 messages 末尾的独立 system 消息）
@@ -701,14 +722,12 @@ def build_context_supplement(
     - {tool_instructions}: 工具调用指令（agentic_tool_prompt.txt 渲染后）
     - {rag_section}: RAG 记忆召回内容
     - {skill_active_section}: 用户主动选择的技能指令
-    - {compress_section}: 启动压缩摘要
 
     Args:
         include_skills: 是否包含技能列表
         include_tool_instructions: 是否注入工具调用指令（agentic loop 模式）
         skill_name: 用户主动选择的技能名称
         rag_section: RAG 记忆召回内容（由 api_server 传入）
-        compress_section: 启动压缩摘要（由 api_server 传入）
 
     Returns:
         渲染后的附加知识内容
@@ -775,7 +794,6 @@ def build_context_supplement(
     result = result.replace("{tool_instructions}", tool_instructions)
     result = result.replace("{rag_section}", rag_section)
     result = result.replace("{skill_active_section}", skill_active_section)
-    result = result.replace("{compress_section}", compress_section)
 
     return result
 

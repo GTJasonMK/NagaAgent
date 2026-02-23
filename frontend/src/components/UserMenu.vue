@@ -3,9 +3,9 @@ import { useToast } from 'primevue/usetoast'
 import { computed, inject, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { checkIn, getAffinity, getCheckInStatus, getCredits } from '@/api/business'
-import { isNagaLoggedIn, nagaUser, useAuth } from '@/composables/useAuth'
-import pointsIcon from '@/assets/icons/points.svg'
 import affinityIcon from '@/assets/icons/affinity.svg'
+import pointsIcon from '@/assets/icons/points.svg'
+import { isNagaLoggedIn, nagaUser, useAuth } from '@/composables/useAuth'
 
 const toast = useToast()
 const router = useRouter()
@@ -31,7 +31,8 @@ watch(isNagaLoggedIn, async (loggedIn) => {
 }, { immediate: true })
 
 async function handleCheckIn() {
-  if (checkedInToday.value || checkingIn.value) return
+  if (checkedInToday.value || checkingIn.value)
+    return
   checkingIn.value = true
   try {
     const res = await checkIn()
@@ -41,7 +42,7 @@ async function handleCheckIn() {
       return
     }
     checkedInToday.value = true
-    const earned = parseFloat(res.affinityEarned) || 0
+    const earned = Number.parseFloat(res.affinityEarned) || 0
     const credits = res.creditsEarned ?? 0
     let detail = `熟悉度 +${earned}，积分 +${credits}`
     if (res.bonusCredits > 0) {
@@ -80,23 +81,24 @@ const affinityDetail = ref<{
 async function openStatPopup(type: 'points' | 'affinity') {
   statPopup.value = type
   popupLoading.value = true
-  if (type === 'points') creditsDetail.value = null
+  if (type === 'points')
+    creditsDetail.value = null
   else affinityDetail.value = null
   try {
     if (type === 'points') {
       const data = await getCredits()
       creditsDetail.value = {
-        available: parseFloat(data.creditsAvailable) || 0,
-        total: parseFloat(data.creditsTotal) || 0,
-        used: parseFloat(data.creditsUsed) || 0,
+        available: Number.parseFloat(data.creditsAvailable) || 0,
+        total: Number.parseFloat(data.creditsTotal) || 0,
+        used: Number.parseFloat(data.creditsUsed) || 0,
       }
     }
     else {
       const data = await getAffinity()
       affinityDetail.value = {
         level: data.level ?? 0,
-        affinityPoints: parseFloat(data.affinityPoints) || 0,
-        pointsNeeded: parseFloat(data.pointsNeeded) || 0,
+        affinityPoints: Number.parseFloat(data.affinityPoints) || 0,
+        pointsNeeded: Number.parseFloat(data.pointsNeeded ?? '0') || 0,
         progressPct: data.progressPct ?? 0,
         streakDays: data.streakDays ?? 0,
         recoveryMode: data.recoveryMode ?? false,
@@ -115,7 +117,8 @@ function closeStatPopup() {
 }
 
 const affinityProgress = computed(() => {
-  if (!affinityDetail.value) return 0
+  if (!affinityDetail.value)
+    return 0
   return Math.min(100, Math.round(affinityDetail.value.progressPct))
 })
 
@@ -257,7 +260,7 @@ const displayName = computed(() => {
               <template v-if="affinityDetail">
                 <div class="affinity-progress-wrap">
                   <div class="affinity-progress-bar">
-                    <div class="affinity-progress-fill" :style="{ width: affinityProgress + '%' }" />
+                    <div class="affinity-progress-fill" :style="{ width: `${affinityProgress}%` }" />
                   </div>
                   <span class="affinity-progress-text">{{ affinityDetail.affinityPoints }} / {{ affinityDetail.pointsNeeded }}</span>
                 </div>

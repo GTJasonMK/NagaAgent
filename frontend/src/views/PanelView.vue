@@ -2,15 +2,15 @@
 import { useWindowSize } from '@vueuse/core'
 import { computed } from 'vue'
 import { useLink } from 'vue-router'
-import { CONFIG } from '@/utils/config'
 import brain from '@/assets/icons/brain.png'
 import chip from '@/assets/icons/chip.png'
-import naga from '@/assets/icons/naga.png'
-import toolkit from '@/assets/icons/toolkit.png'
 import market from '@/assets/icons/market.svg'
 import musicBoxIcon from '@/assets/icons/musicbox3.png'
+import naga from '@/assets/icons/naga.png'
+import toolkit from '@/assets/icons/toolkit.png'
 import ArkButton from '@/components/ArkButton.vue'
 import { useParallax } from '@/composables/useParallax'
+import { CONFIG } from '@/utils/config'
 
 const { height } = useWindowSize()
 const scale = computed(() => height.value / 720)
@@ -55,14 +55,13 @@ function enterFloatingMode() {
           <button class="float-btn absolute -left-16 top-0 bottom-0 w-12 flex flex-col items-center justify-center bg-white border-none shadow backdrop-blur-md transition hover:brightness-105" @click="enterFloatingMode">
             <span class="text-lg font-serif font-bold text-black">悬浮</span>
             <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="12" r="9" stroke="#B9B9B9" stroke-width="1.5"/>
-              <path d="M12 4C12 4 6 8 6 12C6 16 12 20 12 20" stroke="#B9B9B9" stroke-width="1.2" stroke-linecap="round" opacity="0.8"/>
-              <path d="M12 4C12 4 18 8 18 12C18 16 12 20 12 20" stroke="#B9B9B9" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
-              <ellipse cx="9" cy="10" rx="1.5" ry="2" fill="#B9B9B9" opacity="0.6"/>
+              <circle cx="12" cy="12" r="9" stroke="#B9B9B9" stroke-width="1.5" />
+              <path d="M12 4C12 4 6 8 6 12C6 16 12 20 12 20" stroke="#B9B9B9" stroke-width="1.2" stroke-linecap="round" opacity="0.8" />
+              <path d="M12 4C12 4 18 8 18 12C18 16 12 20 12 20" stroke="#B9B9B9" stroke-width="1.2" stroke-linecap="round" opacity="0.6" />
+              <ellipse cx="9" cy="10" rx="1.5" ry="2" fill="#B9B9B9" opacity="0.6" />
             </svg>
-
           </button>
-          
+
           <div class="bg-#363837 text-white p-2 text-sm">
             参数设置
           </div>
