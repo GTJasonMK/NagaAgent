@@ -169,6 +169,7 @@ class SystemConfig(BaseModel):
 
     version: str = Field(default="5.0.0", description="系统版本号")
     ai_name: str = Field(default="娜迦日达", description="AI助手名称")
+    active_character: str = Field(default="娜迦日达", description="当前活跃角色名称")
     base_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent, description="项目根目录")
     log_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent / "logs", description="日志目录")
     voice_enabled: bool = Field(default=True, description="是否启用语音功能")
@@ -628,6 +629,10 @@ class PromptManager:
             return None
 
 
+# 角色资源根目录
+CHARACTERS_DIR: Path = Path(__file__).parent.parent / "characters"
+
+
 # 全局提示词管理器实例
 _prompt_manager = None
 
@@ -638,6 +643,21 @@ def get_prompt_manager() -> PromptManager:
     if _prompt_manager is None:
         _prompt_manager = PromptManager()
     return _prompt_manager
+
+
+def load_character(name: str) -> dict:
+    """从 characters/{name}/{name}.json 加载角色配置"""
+    char_json = CHARACTERS_DIR / name / f"{name}.json"
+    with open(char_json, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def set_active_character(name: str) -> None:
+    """切换活跃角色 - 将提示词管理器重定向到角色目录"""
+    global _prompt_manager
+    char_dir = CHARACTERS_DIR / name
+    _prompt_manager = PromptManager(prompts_dir=str(char_dir))
+    print(f"[角色系统] 已加载角色: {name}，提示词目录: {char_dir}")
 
 
 def get_prompt(name: str, **kwargs) -> str:

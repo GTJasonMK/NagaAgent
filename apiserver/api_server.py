@@ -78,6 +78,15 @@ async def lifespan(app: FastAPI):
     try:
         print("[INFO] 正在初始化API服务器...")
         # 对话核心功能已集成到apiserver
+
+        # 加载活跃角色配置
+        try:
+            from system.config import set_active_character, get_config as _gc
+            char_name = _gc().system.active_character
+            set_active_character(char_name)
+        except Exception as e:
+            print(f"[WARN] 角色加载失败，使用默认提示词目录: {e}")
+
         print("[SUCCESS] API服务器初始化完成")
         yield
     except Exception as e:
@@ -115,6 +124,10 @@ async def sync_auth_token(request: Request, call_next):
 
 
 # 挂载静态文件
+from fastapi.staticfiles import StaticFiles as _StaticFiles
+from system.config import CHARACTERS_DIR as _CHARACTERS_DIR
+app.mount("/characters", _StaticFiles(directory=str(_CHARACTERS_DIR)), name="characters")
+
 # ============ 内部服务代理 ============
 
 
@@ -598,9 +611,24 @@ async def get_system_info():
 
 @app.get("/system/config")
 async def get_system_config():
-    """获取完整系统配置"""
+    """获取完整系统配置（web_live2d.model.source 由角色系统动态注入）"""
     try:
         config_data = get_config_snapshot()
+
+        # 动态注入角色 Live2D 模型路径
+        try:
+            from system.config import load_character, CHARACTERS_DIR
+            from urllib.parse import quote
+            char_name = get_config().system.active_character
+            char_data = load_character(char_name)
+            port = get_config().api_server.port
+            encoded_name = quote(char_name, safe="")
+            encoded_model = quote(char_data["live2d_model"], safe="/")
+            model_url = f"http://localhost:{port}/characters/{encoded_name}/{encoded_model}"
+            config_data.setdefault("web_live2d", {}).setdefault("model", {})["source"] = model_url
+        except Exception as char_err:
+            logger.warning(f"角色模型路径注入失败: {char_err}")
+
         return {"status": "success", "config": config_data}
     except Exception as e:
         logger.error(f"获取系统配置失败: {e}")
@@ -610,8 +638,15 @@ async def get_system_config():
 
 @app.post("/system/config")
 async def update_system_config(payload: Dict[str, Any]):
-    """更新系统配置"""
+    """更新系统配置（自动过滤角色系统动态注入的 live2d 模型路径，避免写入 config.json）"""
     try:
+        # 过滤掉由角色系统动态注入的 model.source，避免将 localhost URL 持久化
+        web_live2d = payload.get("web_live2d", {})
+        model_block = web_live2d.get("model", {})
+        source = model_block.get("source", "")
+        if source and "/characters/" in source and source.startswith("http://localhost"):
+            model_block.pop("source", None)
+
         success = update_config(payload)
         if success:
             return {"status": "success", "message": "配置更新成功"}
@@ -654,6 +689,34 @@ async def update_system_prompt(payload: Dict[str, Any]):
         logger.error(f"更新系统提示词失败: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"更新系统提示词失败: {str(e)}")
+
+
+@app.get("/system/character")
+async def get_active_character():
+    """获取当前活跃角色信息及资源路径"""
+    try:
+        from system.config import load_character, CHARACTERS_DIR
+        from urllib.parse import quote
+        char_name = get_config().system.active_character
+        char_data = load_character(char_name)
+        port = get_config().api_server.port
+        encoded_name = quote(char_name, safe="")
+        encoded_model = quote(char_data["live2d_model"], safe="/")
+        model_url = f"http://localhost:{port}/characters/{encoded_name}/{encoded_model}"
+        return {
+            "status": "success",
+            "character": {
+                "name": char_name,
+                "ai_name": char_data["ai_name"],
+                "user_name": char_data["user_name"],
+                "live2d_model_url": model_url,
+                "prompt_file": char_data["prompt_file"],
+            },
+        }
+    except Exception as e:
+        logger.error(f"获取角色信息失败: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"获取角色信息失败: {str(e)}")
 
 
 @app.get("/openclaw/market/items")
