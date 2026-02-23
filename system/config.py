@@ -690,7 +690,6 @@ def build_context_supplement(
     include_tool_instructions: bool = False,
     skill_name: Optional[str] = None,
     rag_section: str = "",
-    compress_section: str = "",
 ) -> str:
     """
     构建附加知识内容（追加在 messages 末尾的独立 system 消息）
@@ -701,14 +700,12 @@ def build_context_supplement(
     - {tool_instructions}: 工具调用指令（agentic_tool_prompt.txt 渲染后）
     - {rag_section}: RAG 记忆召回内容
     - {skill_active_section}: 用户主动选择的技能指令
-    - {compress_section}: 启动压缩摘要
 
     Args:
         include_skills: 是否包含技能列表
         include_tool_instructions: 是否注入工具调用指令（agentic loop 模式）
         skill_name: 用户主动选择的技能名称
         rag_section: RAG 记忆召回内容（由 api_server 传入）
-        compress_section: 启动压缩摘要（由 api_server 传入）
 
     Returns:
         渲染后的附加知识内容
@@ -775,7 +772,6 @@ def build_context_supplement(
     result = result.replace("{tool_instructions}", tool_instructions)
     result = result.replace("{rag_section}", rag_section)
     result = result.replace("{skill_active_section}", skill_active_section)
-    result = result.replace("{compress_section}", compress_section)
 
     return result
 

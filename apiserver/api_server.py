@@ -839,6 +839,7 @@ async def chat(request: ChatRequest):
         # 构建附加知识并追加为 messages 末尾的 system 消息
         supplement = build_context_supplement(
             include_skills=True,
+            include_tool_instructions=True,
             skill_name=request.skill,
             rag_section=rag_section,
         )
@@ -880,6 +881,9 @@ async def chat_stream(request: ChatRequest):
     async def generate_response() -> AsyncGenerator[str, None]:
         complete_text = ""  # 用于累积最终轮的完整文本（供 return_audio 模式使用）
         try:
+            import time as _time
+            t_api_start = _time.monotonic()
+
             # 获取或创建会话ID
             session_id = message_manager.create_session(request.session_id, temporary=request.temporary)
 
@@ -922,29 +926,12 @@ async def chat_stream(request: ChatRequest):
             except Exception as e:
                 logger.debug(f"[RAG] 记忆召回失败（不影响对话）: {e}")
 
-            # ====== 启动压缩 → 生成 compress_section ======
-            compress_section = ""
-            try:
-                from .context_compressor import compress_for_startup, build_compress_block
-                prev_session_id = message_manager._get_previous_session_id(session_id)
-                previous_compress = message_manager.get_session_compress(prev_session_id) if prev_session_id else ""
-                prev_messages = message_manager._get_previous_session_messages(session_id)
-                if prev_messages or previous_compress:
-                    summary = await compress_for_startup(prev_messages, previous_compress=previous_compress)
-                    if summary:
-                        compress_section = build_compress_block(summary)
-                        message_manager.set_session_compress(session_id, summary)
-                        logger.info(f"[启动压缩] 已生成摘要 ({len(summary)} 字)")
-            except Exception as e:
-                logger.debug(f"[启动压缩] 跳过: {e}")
-
             # 构建附加知识并追加为 messages 末尾的 system 消息
             supplement = build_context_supplement(
                 include_skills=True,
                 include_tool_instructions=True,
                 skill_name=request.skill,
                 rag_section=rag_section,
-                compress_section=compress_section,
             )
             messages.append({"role": "system", "content": supplement})
 
@@ -1010,6 +997,10 @@ async def chat_stream(request: ChatRequest):
 
             # ====== Agentic Tool Loop ======
             from .agentic_tool_loop import run_agentic_loop
+
+            t_prepare_elapsed = _time.monotonic() - t_api_start
+            logger.info(f"[ChatStream] 预处理完成: {t_prepare_elapsed:.2f}s "
+                        f"(消息构建+RAG+启动压缩+supplement+voice初始化)")
 
             # 如果本次携带图片，标记此会话为 VLM 会话
             if request.images:
@@ -1867,7 +1858,7 @@ async def tool_result_callback(payload: Dict[str, Any]):
             session_id=session_id, system_prompt=system_prompt, current_message=enhanced_message
         )
         # 追加附加知识到末尾
-        supplement = build_context_supplement(include_skills=True)
+        supplement = build_context_supplement(include_skills=True, include_tool_instructions=True)
         messages.append({"role": "system", "content": supplement})
 
         logger.info("[工具回调] 开始生成工具后回复...")
