@@ -1177,7 +1177,7 @@ wheels = [
 
 [[package]]
 name = "nagaagent"
-version = "4.0.0"
+version = "5.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },

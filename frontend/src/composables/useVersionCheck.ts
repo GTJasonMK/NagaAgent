@@ -47,7 +47,7 @@ export async function checkForUpdate(): Promise<void> {
 
     if (!data.version || data.has_update === false) return
 
-    const currentVersion = CONFIG.value.system.version ?? '5.0.0'
+    const currentVersion = CONFIG.value.system.version ?? '5.1.0'
     if (data.version === currentVersion) return
 
     updateInfo.value = {

@@ -261,7 +261,7 @@ class ConfigManager:
             return data
         print("获取配置快照失败，返回兜底配置")
         return {
-            "system": {"version": "5.0.0"},
+            "system": {"version": "5.1.0"},
             "api": {"api_key": ""},
             "api_server": {"enabled": True},
             "grag": {"enabled": False},

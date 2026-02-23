@@ -47,7 +47,7 @@ MAC_ARCH = "arm64" if platform.machine() == "arm64" else "x64"
 
 # ============ 常量 ============
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 BACKEND_DIST_DIR = FRONTEND_DIR / "backend-dist"
 RUNTIME_DIR = BACKEND_DIST_DIR / "openclaw-runtime"

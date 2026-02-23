@@ -99,7 +99,7 @@ async def lifespan(app: FastAPI):
 
 
 # 创建FastAPI应用
-app = FastAPI(title="NagaAgent API", description="智能对话助手API服务", version="5.0.0", lifespan=lifespan)
+app = FastAPI(title="NagaAgent API", description="智能对话助手API服务", version="5.1.0", lifespan=lifespan)
 
 # 配置CORS
 app.add_middleware(
@@ -552,7 +552,7 @@ async def root():
     """API根路径"""
     return {
         "name": "NagaAgent API",
-        "version": "5.0.0",
+        "version": "5.1.0",
         "status": "running",
         "docs": "/docs",
     }
@@ -602,7 +602,7 @@ async def get_system_info():
     """获取系统信息"""
 
     return SystemInfoResponse(
-        version="5.0.0",
+        version="5.1.0",
         status="running",
         available_services=[],  # MCP服务现在由mcpserver独立管理
         api_key_configured=bool(get_config().api.api_key and get_config().api.api_key != "sk-placeholder-key-not-set"),

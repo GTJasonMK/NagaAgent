@@ -167,7 +167,7 @@ def bootstrap_config_from_example(config_path: str) -> None:
 class SystemConfig(BaseModel):
     """系统基础配置"""
 
-    version: str = Field(default="5.0.0", description="系统版本号")
+    version: str = Field(default="5.1.0", description="系统版本号")
     ai_name: str = Field(default="娜迦日达", description="AI助手名称")
     active_character: str = Field(default="娜迦日达", description="当前活跃角色名称")
     base_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent, description="项目根目录")
