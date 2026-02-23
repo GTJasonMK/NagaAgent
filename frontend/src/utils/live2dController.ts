@@ -214,13 +214,14 @@ async function loadExpressions(modelBasePath: string, modelSource: string) {
         }
         expressionDefs.set(expName, def)
       }
-      catch {
-        // 单个表情文件加载失败不影响其他
+      catch (e) {
+        console.warn(`[Live2D] Failed to load expression: ${fileName}`, e)
       }
     }
+    console.log('[Live2D] Loaded expressions:', Array.from(expressionDefs.keys()))
   }
-  catch {
-    // model3.json 加载失败，表情通道不可用
+  catch (e) {
+    console.warn('[Live2D] Failed to load model3.json for expressions:', e)
   }
 }
 
@@ -482,8 +483,12 @@ export async function setEmotion(emotion: EmotionCategory) {
 
   // 只有在已加载对应表情时才切换
   if (expressionDefs.has(targetName)) {
+    console.log('[Live2D] Set emotion:', emotion, '→', targetName)
     currentEmotionName = targetName
     emotionFadeStartTime = performance.now()
+  }
+  else {
+    console.warn('[Live2D] Emotion expression not loaded:', targetName, 'available:', Array.from(expressionDefs.keys()))
   }
 }
 
@@ -535,18 +540,24 @@ export async function initController(modelInstance: Live2DModel, modelSource: st
   // e.g. './models/NagaTest2/NagaTest2.model3.json' → './models/NagaTest2'
   const basePath = modelSource.replace(/\/[^/]+$/, '')
 
-  // 加载身体/头部动作数据
-  const response = await fetch(`${basePath}/naga-actions.json`)
-  actionsData = await response.json() as ActionsData
+  try {
+    // 加载身体/头部动作数据
+    const response = await fetch(`${basePath}/naga-actions.json`)
+    actionsData = await response.json() as ActionsData
 
-  // 加载 .exp3.json 表情文件
-  await loadExpressions(basePath, modelSource)
+    // 加载 .exp3.json 表情文件
+    await loadExpressions(basePath, modelSource)
 
-  originalUpdate = model.update.bind(model)
-  model.update = function (dt: number) {
-    const now = performance.now()
-    originalUpdate!(dt)
-    tick(now)
+    originalUpdate = model.update.bind(model)
+    model.update = function (dt: number) {
+      const now = performance.now()
+      originalUpdate!(dt)
+      tick(now)
+    }
+    console.log('[Live2D] Controller initialized for:', modelSource)
+  }
+  catch (e) {
+    console.error('[Live2D] Controller initialization failed:', e)
   }
 }
 
@@ -560,6 +571,7 @@ export function destroyController() {
   actionQueue = []
   activeAction = null
   // Emotion 通道
+  expressionDefs.clear()
   currentEmotionName = null
   emotionCurrentValues = {}
   emotionFadeStartTime = 0

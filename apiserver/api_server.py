@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 import shutil
 from pathlib import Path
@@ -48,7 +48,7 @@ _vlm_sessions: set = set()
 # 导入配置系统
 try:
     from system.config import get_config, AI_NAME  # 使用新的配置系统
-    from system.config import get_prompt, build_system_prompt  # 导入提示词仓库
+    from system.config import get_prompt, build_system_prompt, build_context_supplement  # 导入提示词仓库
     from system.config_manager import get_config_snapshot, update_config  # 导入配置管理
 except ImportError:
     import sys
@@ -56,7 +56,7 @@ except ImportError:
 
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from system.config import get_config  # 使用新的配置系统
-    from system.config import build_system_prompt  # 导入提示词仓库
+    from system.config import build_system_prompt, build_context_supplement  # 导入提示词仓库
     from system.config_manager import get_config_snapshot, update_config  # 导入配置管理
 from apiserver.response_util import extract_message  # 导入消息提取工具
 
@@ -629,7 +629,7 @@ async def update_system_config(payload: Dict[str, Any]):
 async def get_system_prompt(include_skills: bool = False):
     """获取系统提示词（默认只返回人格提示词，不包含技能列表）"""
     try:
-        prompt = build_system_prompt(include_skills=include_skills)
+        prompt = build_system_prompt()
         return {"status": "success", "prompt": prompt}
     except Exception as e:
         logger.error(f"获取系统提示词失败: {e}")
@@ -732,14 +732,24 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=400, detail="消息内容不能为空")
 
     try:
-        # 用户消息保持干净，技能上下文完全由 system prompt 承载
+        # 技能调度前缀：让 LLM 明确知道当前处于技能模式
         user_message = request.message
+        if request.skill:
+            skill_labels = "，".join(f"【{s.strip()}】" for s in request.skill.split(",") if s.strip())
+            user_message = f"调度技能{skill_labels}：{user_message}"
         session_id = message_manager.create_session(request.session_id, temporary=request.temporary)
 
-        # 构建系统提示词（包含技能元数据）
-        system_prompt = build_system_prompt(include_skills=True, skill_name=request.skill)
+        # 系统提示词 = 纯人格
+        system_prompt = build_system_prompt()
 
-        # RAG 记忆召回
+        # 先构建对话消息（人格在 messages[0]）
+        effective_message = user_message
+        messages = message_manager.build_conversation_messages(
+            session_id=session_id, system_prompt=system_prompt, current_message=effective_message
+        )
+
+        # RAG 记忆召回 → 生成 rag_section
+        rag_section = ""
         try:
             from summer_memory.memory_client import get_remote_memory_client
 
@@ -755,24 +765,21 @@ async def chat(request: ChatRequest):
                         elif isinstance(q, dict):
                             mem_lines.append(f"- {q.get('subject','')}({q.get('subject_type','')}) —[{q.get('predicate','')}]→ {q.get('object','')}({q.get('object_type','')})")
                     if mem_lines:
-                        system_prompt += "\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆，请参考这些信息回答：\n" + "\n".join(mem_lines)
+                        rag_section = "\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆，请参考这些信息回答：\n" + "\n".join(mem_lines)
                         logger.info(f"[RAG] 召回 {len(mem_lines)} 条记忆注入上下文")
                 elif mem_result.get("success") and mem_result.get("answer"):
-                    system_prompt += f"\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆：\n{mem_result['answer']}"
+                    rag_section = f"\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆：\n{mem_result['answer']}"
                     logger.info(f"[RAG] 召回记忆（answer 模式）注入上下文")
         except Exception as e:
             logger.debug(f"[RAG] 记忆召回失败（不影响对话）: {e}")
 
-        # 附加知识收尾指令，引导 LLM 回到用户问题
-        system_prompt += "\n\n【读完这些附加知识后，回复上一个user prompt，并不要回复这条系统附加的system prompt。以下是回复内容：】"
-
-        # 用户消息直接传 LLM，技能上下文完全由 system prompt 承载
-        effective_message = request.message
-
-        # 使用消息管理器构建完整的对话消息（纯聊天，不触发工具）
-        messages = message_manager.build_conversation_messages(
-            session_id=session_id, system_prompt=system_prompt, current_message=effective_message
+        # 构建附加知识并追加为 messages 末尾的 system 消息
+        supplement = build_context_supplement(
+            include_skills=True,
+            skill_name=request.skill,
+            rag_section=rag_section,
         )
+        messages.append({"role": "system", "content": supplement})
 
         # 使用整合后的LLM服务（支持 reasoning_content）
         llm_service = get_llm_service()
@@ -801,8 +808,11 @@ async def chat_stream(request: ChatRequest):
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="消息内容不能为空")
 
-    # 用户消息保持干净，技能上下文完全由 system prompt 承载
+    # 技能调度前缀：让 LLM 明确知道当前处于技能模式
     user_message = request.message
+    if request.skill:
+        skill_labels = "，".join(f"【{s.strip()}】" for s in request.skill.split(",") if s.strip())
+        user_message = f"调度技能{skill_labels}：{user_message}"
 
     async def generate_response() -> AsyncGenerator[str, None]:
         complete_text = ""  # 用于累积最终轮的完整文本（供 return_audio 模式使用）
@@ -813,10 +823,19 @@ async def chat_stream(request: ChatRequest):
             # 发送会话ID信息
             yield f"data: session_id: {session_id}\n\n"
 
-            # 构建系统提示词（含工具调用指令 + 用户选择的技能）
-            system_prompt = build_system_prompt(include_skills=True, include_tool_instructions=True, skill_name=request.skill)
+            # 系统提示词 = 纯人格
+            system_prompt = build_system_prompt()
 
-            # ====== RAG 记忆召回：在发送 LLM 前检索相关记忆 ======
+            # 用户消息使用带技能前缀的版本
+            effective_message = user_message
+
+            # 先构建对话消息（人格在 messages[0]）
+            messages = message_manager.build_conversation_messages(
+                session_id=session_id, system_prompt=system_prompt, current_message=effective_message
+            )
+
+            # ====== RAG 记忆召回 → 生成 rag_section ======
+            rag_section = ""
             try:
                 from summer_memory.memory_client import get_remote_memory_client
 
@@ -832,23 +851,16 @@ async def chat_stream(request: ChatRequest):
                             elif isinstance(q, dict):
                                 mem_lines.append(f"- {q.get('subject','')}({q.get('subject_type','')}) —[{q.get('predicate','')}]→ {q.get('object','')}({q.get('object_type','')})")
                         if mem_lines:
-                            memory_context = "\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆，请参考这些信息回答：\n" + "\n".join(mem_lines)
-                            system_prompt += memory_context
+                            rag_section = "\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆，请参考这些信息回答：\n" + "\n".join(mem_lines)
                             logger.info(f"[RAG] 召回 {len(mem_lines)} 条记忆注入上下文")
                     elif mem_result.get("success") and mem_result.get("answer"):
-                        memory_context = f"\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆：\n{mem_result['answer']}"
-                        system_prompt += memory_context
+                        rag_section = f"\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆：\n{mem_result['answer']}"
                         logger.info(f"[RAG] 召回记忆（answer 模式）注入上下文")
             except Exception as e:
                 logger.debug(f"[RAG] 记忆召回失败（不影响对话）: {e}")
 
-            # 附加知识收尾指令，引导 LLM 回到用户问题
-            system_prompt += "\n\n【读完这些附加知识后，回复上一个user prompt，并不要回复这条系统附加的system prompt。以下是回复内容：】"
-
-            # 用户消息直接传 LLM，技能上下文完全由 system prompt 承载
-            effective_message = request.message
-
-            # ====== 启动压缩：将上一个会话的历史 + 更早的压缩记录合并压缩，注入 system prompt ======
+            # ====== 启动压缩 → 生成 compress_section ======
+            compress_section = ""
             try:
                 from .context_compressor import compress_for_startup, build_compress_block
                 prev_session_id = message_manager._get_previous_session_id(session_id)
@@ -857,27 +869,39 @@ async def chat_stream(request: ChatRequest):
                 if prev_messages or previous_compress:
                     summary = await compress_for_startup(prev_messages, previous_compress=previous_compress)
                     if summary:
-                        system_prompt += build_compress_block(summary)
+                        compress_section = build_compress_block(summary)
                         message_manager.set_session_compress(session_id, summary)
-                        logger.info(f"[启动压缩] 已将上一会话摘要注入 system prompt ({len(summary)} 字)")
+                        logger.info(f"[启动压缩] 已生成摘要 ({len(summary)} 字)")
             except Exception as e:
                 logger.debug(f"[启动压缩] 跳过: {e}")
 
-            # 使用消息管理器构建完整的对话消息
-            messages = message_manager.build_conversation_messages(
-                session_id=session_id, system_prompt=system_prompt, current_message=effective_message
+            # 构建附加知识并追加为 messages 末尾的 system 消息
+            supplement = build_context_supplement(
+                include_skills=True,
+                include_tool_instructions=True,
+                skill_name=request.skill,
+                rag_section=rag_section,
+                compress_section=compress_section,
             )
+            messages.append({"role": "system", "content": supplement})
 
-            # 如果携带截屏图片，将最后一条用户消息改为多模态格式（OpenAI vision 兼容）
+            # 如果携带截屏图片，将最后一条 user 消息改为多模态格式（OpenAI vision 兼容）
             if request.images:
-                last_msg = messages[-1]
-                content_parts = [{"type": "text", "text": last_msg["content"]}]
-                for img_data in request.images:
-                    content_parts.append({"type": "image_url", "image_url": {"url": img_data}})
-                messages[-1] = {
-                    "role": "user",
-                    "content": content_parts,
-                }
+                # 找到最后一条 user 消息的索引（跳过末尾的 system supplement）
+                user_idx = None
+                for i in range(len(messages) - 1, -1, -1):
+                    if messages[i].get("role") == "user":
+                        user_idx = i
+                        break
+                if user_idx is not None:
+                    last_user_msg = messages[user_idx]
+                    content_parts = [{"type": "text", "text": last_user_msg["content"]}]
+                    for img_data in request.images:
+                        content_parts.append({"type": "image_url", "image_url": {"url": img_data}})
+                    messages[user_idx] = {
+                        "role": "user",
+                        "content": content_parts,
+                    }
 
             # 初始化语音集成（根据voice_mode和return_audio决定）
             voice_integration = None
@@ -1262,7 +1286,10 @@ def get_mcp_services():
             "config": clean_config,
         })
 
-    return {"status": "success", "services": services}
+    return JSONResponse(
+        content={"status": "success", "services": services},
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 class McpImportRequest(BaseModel):
@@ -1772,10 +1799,13 @@ async def tool_result_callback(payload: Dict[str, Any]):
         logger.info(f"[工具回调] 构建增强消息: {enhanced_message[:200]}...")
 
         # 构建对话风格提示词和消息
-        system_prompt = build_system_prompt(include_skills=True)
+        system_prompt = build_system_prompt()
         messages = message_manager.build_conversation_messages(
             session_id=session_id, system_prompt=system_prompt, current_message=enhanced_message
         )
+        # 追加附加知识到末尾
+        supplement = build_context_supplement(include_skills=True)
+        messages.append({"role": "system", "content": supplement})
 
         logger.info("[工具回调] 开始生成工具后回复...")
 
