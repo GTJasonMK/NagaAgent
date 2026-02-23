@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import BoxContainer from '@/components/BoxContainer.vue'
 import musicBox from '@/assets/icons/音乐盒.png'
+import BoxContainer from '@/components/BoxContainer.vue'
 
 const router = useRouter()
 
@@ -17,7 +17,6 @@ function parseDisplayName(filename: string): string {
   const name = filename.replace(/\.mp3$/i, '')
   const match = name.match(/^\d+\.(.+)$/)
   return match ? match[1] || name : name
-
 }
 
 function loadPlaylist(): Track[] {
@@ -78,7 +77,8 @@ function setupAudioForTrack() {
 }
 
 function togglePlay() {
-  if (!audio.value) return
+  if (!audio.value)
+    return
 
   if (audio.value.paused) {
     audio.value.play().then(() => {
@@ -94,16 +94,19 @@ function togglePlay() {
 }
 
 function prev() {
-  if (!tracks.value.length) return
+  if (!tracks.value.length)
+    return
   currentIndex.value = (currentIndex.value - 1 + tracks.value.length) % tracks.value.length
   setupAudioForTrack()
 }
 
 function next() {
-  if (!tracks.value.length) return
+  if (!tracks.value.length)
+    return
 
   if (playMode.value === 'shuffle') {
-    if (tracks.value.length === 1) return
+    if (tracks.value.length === 1)
+      return
     let idx = currentIndex.value
     while (idx === currentIndex.value)
       idx = Math.floor(Math.random() * tracks.value.length)
@@ -121,7 +124,9 @@ function handleEnded() {
     // 单曲循环
     if (audio.value) {
       audio.value.currentTime = 0
-      audio.value.play().catch(() => { isPlaying.value = false })
+      audio.value.play().catch(() => {
+        isPlaying.value = false
+      })
     }
   }
   else {
@@ -147,12 +152,14 @@ onMounted(() => {
     return
 
   audio.value.addEventListener('timeupdate', () => {
-    if (!audio.value) return
+    if (!audio.value)
+      return
     currentTime.value = audio.value.currentTime
     duration.value = audio.value.duration || duration.value
   })
   audio.value.addEventListener('loadedmetadata', () => {
-    if (!audio.value) return
+    if (!audio.value)
+      return
     duration.value = audio.value.duration
   })
   audio.value.addEventListener('ended', handleEnded)
@@ -517,4 +524,3 @@ watch(currentTrack, () => {
   color: #e5e7eb;
 }
 </style>
-

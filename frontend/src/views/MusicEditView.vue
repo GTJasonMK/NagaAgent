@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BoxContainer from '@/components/BoxContainer.vue'
 
@@ -36,7 +36,7 @@ function parseDisplayName(filename: string): string {
   // 如果有数字前缀（如 "8.日常的小曲"），提取中文部分
   const match = name.match(/^\d+\.(.+)$/)
   if (match) {
-    return match[1]
+    return match[1]!
   }
   return name
 }
@@ -75,7 +75,8 @@ onMounted(async () => {
 
 // 添加歌曲到播放列表
 function addToPlaylist(song: Song) {
-  if (playlist.value.some(s => s.id === song.id)) return
+  if (playlist.value.some(s => s.id === song.id))
+    return
   playlist.value.push(song)
   savePlaylist()
 }
@@ -90,9 +91,10 @@ function removeFromPlaylist(index: number) {
 
 // 交换播放列表中两首歌曲的位置
 function swapSongs(index1: number, index2: number) {
-  if (index1 === index2 || index1 < 0 || index2 < 0 || index1 >= playlist.value.length || index2 >= playlist.value.length) return
-  const temp = playlist.value[index1]
-  playlist.value[index1] = playlist.value[index2]
+  if (index1 === index2 || index1 < 0 || index2 < 0 || index1 >= playlist.value.length || index2 >= playlist.value.length)
+    return
+  const temp = playlist.value[index1]!
+  playlist.value[index1] = playlist.value[index2]!
   playlist.value[index2] = temp
   firstSelectedIndex.value = null
   selectedPlaylistIndex.value = null
@@ -130,7 +132,7 @@ function confirm() {
 }
 
 // 取消
-function cancel() {
+function _cancel() {
   router.push('/music')
 }
 </script>
