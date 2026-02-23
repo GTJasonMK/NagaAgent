@@ -49,6 +49,7 @@ _vlm_sessions: set = set()
 try:
     from system.config import get_config, AI_NAME  # 使用新的配置系统
     from system.config import get_prompt, build_system_prompt, build_context_supplement  # 导入提示词仓库
+    from system.config import VERSION  # 版本号（唯一来源：pyproject.toml）
     from system.config_manager import get_config_snapshot, update_config  # 导入配置管理
 except ImportError:
     import sys
@@ -57,6 +58,7 @@ except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from system.config import get_config  # 使用新的配置系统
     from system.config import build_system_prompt, build_context_supplement  # 导入提示词仓库
+    from system.config import VERSION  # 版本号（唯一来源：pyproject.toml）
     from system.config_manager import get_config_snapshot, update_config  # 导入配置管理
 from apiserver.response_util import extract_message  # 导入消息提取工具
 
@@ -99,7 +101,7 @@ async def lifespan(app: FastAPI):
 
 
 # 创建FastAPI应用
-app = FastAPI(title="NagaAgent API", description="智能对话助手API服务", version="5.1.0", lifespan=lifespan)
+app = FastAPI(title="NagaAgent API", description="智能对话助手API服务", version=VERSION, lifespan=lifespan)
 
 # 配置CORS
 app.add_middleware(
@@ -552,7 +554,7 @@ async def root():
     """API根路径"""
     return {
         "name": "NagaAgent API",
-        "version": "5.1.0",
+        "version": VERSION,
         "status": "running",
         "docs": "/docs",
     }
@@ -602,7 +604,7 @@ async def get_system_info():
     """获取系统信息"""
 
     return SystemInfoResponse(
-        version="5.1.0",
+        version=VERSION,
         status="running",
         available_services=[],  # MCP服务现在由mcpserver独立管理
         api_key_configured=bool(get_config().api.api_key and get_config().api.api_key != "sk-placeholder-key-not-set"),

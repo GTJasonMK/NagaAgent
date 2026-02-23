@@ -31,6 +31,10 @@ import time
 import zipfile
 import tarfile
 import json
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # Python < 3.11 fallback
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -79,6 +83,24 @@ NODE_BIN = "node.exe" if IS_WINDOWS else "bin/node"
 NPM_BIN = "npm.cmd" if IS_WINDOWS else "bin/npm"
 BACKEND_EXT = ".exe" if IS_WINDOWS else ""
 INSTALLER_GLOB = "*.exe" if IS_WINDOWS else "*.dmg" if IS_MACOS else "*.AppImage"
+
+
+def read_version() -> str:
+    """从 pyproject.toml 读取版本号（唯一版本源）"""
+    with open(PROJECT_ROOT / "pyproject.toml", "rb") as f:
+        return tomllib.load(f)["project"]["version"]
+
+
+def sync_frontend_version() -> None:
+    """将 pyproject.toml 版本同步到 package.json（electron-builder 用它生成安装包文件名）"""
+    ver = read_version()
+    pkg_path = FRONTEND_DIR / "package.json"
+    pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+    if pkg.get("version") == ver:
+        return
+    pkg["version"] = ver
+    pkg_path.write_text(json.dumps(pkg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    log(f"已同步版本 {ver} → package.json")
 
 
 def log(msg: str) -> None:
@@ -140,6 +162,7 @@ def check_environment() -> bool:
 
     platform_name = "Windows" if IS_WINDOWS else "macOS" if IS_MACOS else "Linux"
     log(f"  平台: {platform_name} ({platform.machine()})  ✓")
+    log(f"  构建版本: {read_version()}")
 
     # Python 版本
     py_ver = sys.version_info[:2]
@@ -438,6 +461,9 @@ def build_frontend(debug: bool = False) -> None:
     debug=True 时（仅 Windows）会注入 electron-builder metadata，
     让安装后的 Electron 主进程以"调试控制台模式"启动后端。
     """
+    # 同步版本号 pyproject.toml → package.json
+    sync_frontend_version()
+
     # 安装前端依赖
     node_modules = FRONTEND_DIR / "node_modules"
     if not node_modules.exists():
