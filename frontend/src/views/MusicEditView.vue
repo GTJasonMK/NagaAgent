@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BoxContainer from '@/components/BoxContainer.vue'
+import { useMusicPlayer } from '@/composables/useMusicPlayer'
 
 interface Song {
   id: string
@@ -28,6 +29,7 @@ const paginatedSongs = computed(() => {
 })
 
 const router = useRouter()
+const { reloadPlaylist } = useMusicPlayer() // 编辑保存后同步到全局播放器
 
 // 解析文件名，生成显示名称
 function parseDisplayName(filename: string): string {
@@ -121,9 +123,10 @@ function handlePlaylistClick(index: number, event: MouseEvent) {
   }
 }
 
-// 保存播放列表到 localStorage
+// 保存播放列表到 localStorage，并通知全局播放器刷新歌单
 function savePlaylist() {
   localStorage.setItem('music-playlist', JSON.stringify(playlist.value.map(s => s.id)))
+  reloadPlaylist()
 }
 
 // 完成：仅更新播放列表

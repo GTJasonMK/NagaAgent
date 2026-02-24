@@ -40,7 +40,7 @@ function enterFloatingMode() {
           </ArkButton>
         </div>
         <ArkButton class="size-full" :icon="naga" @click="useLink({ to: '/chat' }).navigate">
-          <div class="size-full flex items-center justify-end mr-4em">
+          <div class="size-full flex items-center justify-end mr-4em text-4xl">
             对话
           </div>
         </ArkButton>
