@@ -30,8 +30,7 @@ function onTitleAnimEnd() {
 }
 
 function onOverlayAfterLeave() {
-  // 黑色遮罩完全淡出 → 标题阶段结束，清理粒子
-  stopParticles()
+  // 黑色遮罩完全淡出 → 标题阶段结束（粒子继续，直到用户点击唤醒）
   emit('titleDone')
 }
 
@@ -175,6 +174,11 @@ const displayProgress = computed(() => Math.min(100, Math.round(props.progress))
     <!-- 矩形框金色边框 -->
     <div class="frame-border" />
 
+    <!-- 上升光粒（clip-path 镂空，不遮挡 L2D 窗口；z-index 高于 frame-mask 暗层） -->
+    <div class="particle-layer">
+      <canvas ref="particleCanvas" class="absolute inset-0 w-full h-full" />
+    </div>
+
     <!-- 底部进度区域 -->
     <div class="absolute bottom-12 left-1/2 -translate-x-1/2 w-60% flex flex-col items-center gap-2">
       <!-- 阶段文字 + 百分比 -->
@@ -220,8 +224,6 @@ const displayProgress = computed(() => Math.min(100, Math.round(props.progress))
     <!-- 标题阶段：纯黑遮罩 + 标题图片 + 上升粒子 -->
     <Transition name="title-overlay" @after-leave="onOverlayAfterLeave">
       <div v-if="titleOverlayVisible" class="title-overlay">
-        <!-- 上升粒子 canvas -->
-        <canvas ref="particleCanvas" class="absolute inset-0 w-full h-full" />
         <!-- 标题图片 -->
         <div class="title-content" @animationend="onTitleAnimEnd">
           <img src="/assets/title.png" alt="娜迦协议" class="title-img">
@@ -232,6 +234,26 @@ const displayProgress = computed(() => Math.min(100, Math.round(props.progress))
 </template>
 
 <style scoped>
+/* 光粒层：与 frame-mask 相同 clip-path，只在四周暗区显示粒子，不遮挡 L2D 窗口 */
+.particle-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 101;
+  pointer-events: none;
+  --frame-w: 36vw;
+  --frame-h: 52vh;
+  --frame-x: calc(50% - var(--frame-w) / 2);
+  --frame-y: calc(38% - var(--frame-h) / 2);
+  clip-path: polygon(
+    evenodd,
+    0% 0%, 100% 0%, 100% 100%, 0% 100%,
+    var(--frame-x) var(--frame-y),
+    var(--frame-x) calc(var(--frame-y) + var(--frame-h)),
+    calc(var(--frame-x) + var(--frame-w)) calc(var(--frame-y) + var(--frame-h)),
+    calc(var(--frame-x) + var(--frame-w)) var(--frame-y)
+  );
+}
+
 .frame-mask {
   position: absolute;
   inset: 0;
