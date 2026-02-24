@@ -40,7 +40,7 @@ function enterFloatingMode() {
           </ArkButton>
         </div>
         <ArkButton class="size-full" :icon="naga" @click="useLink({ to: '/chat' }).navigate">
-          <div class="size-full flex items-center justify-end mr-4em">
+          <div class="size-full flex items-center justify-end mr-4em text-4xl">
             对话
           </div>
         </ArkButton>
@@ -52,7 +52,7 @@ function enterFloatingMode() {
       <div class="grid grid-cols-2 min-w-0">
         <div class="flex flex-col min-w-0 relative">
           <!-- 悬浮按钮 -->
-          <button class="float-btn absolute -left-16 top-0 bottom-0 w-12 flex flex-col items-center justify-center bg-white border-none shadow backdrop-blur-md transition hover:brightness-105" @click="enterFloatingMode">
+          <button class="float-btn absolute -left-16 top-0 bottom-0 w-12 flex flex-col items-center justify-center bg-white bg-op-90 border-none shadow backdrop-blur-md transition hover:brightness-105 hover:bg-op-100" @click="enterFloatingMode">
             <span class="text-lg font-serif font-bold text-black">悬浮</span>
             <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="12" cy="12" r="9" stroke="#B9B9B9" stroke-width="1.5" />

@@ -100,32 +100,10 @@ function toggleFloatingMode(enabled: boolean) {
           </div>
         </template>
         <div class="grid gap-4">
-          <ConfigItem name="AI 昵称" :description="characterLockedHint ?? '聊天窗口显示的 AI 昵称'">
-            <div class="flex flex-col gap-1">
-              <InputText v-model="CONFIG.system.ai_name" :disabled="characterLocked" />
-              <!-- <span v-if="characterLocked" class="text-xs text-amber-400/80 flex items-center gap-1">
-                <span>🔒</span> 由角色文件管理
-              </span> -->
-            </div>
-          </ConfigItem>
           <ConfigItem name="用户昵称" description="聊天窗口显示的用户昵称">
             <InputText v-model="CONFIG.ui.user_name" />
           </ConfigItem>
           <Divider class="m-1!" />
-          <ConfigItem name="Live2D 模型" :description="characterLocked ? characterLockedHint : undefined">
-            <div class="flex flex-col gap-1">
-              <Select
-                ref="modelSelectRef"
-                :options="Object.keys(MODELS)"
-                :model-value="selectedModel"
-                :disabled="characterLocked"
-                @change="(event) => onModelChange(event.value)"
-              />
-              <!-- <span v-if="characterLocked" class="text-xs text-amber-400/80 flex items-center gap-1">
-                <span>🔒</span> 由角色文件管理
-              </span> -->
-            </div>
-          </ConfigItem>
           <ConfigItem name="Live2D 模型位置">
             <div class="flex flex-col items-center justify-evenly">
               <label v-for="direction in ['x', 'y'] as const" :key="direction" class="w-full flex items-center">
@@ -179,6 +157,31 @@ function toggleFloatingMode(enabled: boolean) {
           </ConfigItem>
         </div>
       </ConfigGroup>
+      <ConfigGroup value="character" header="角色档案">
+        <div class="grid gap-4">
+          <ConfigItem name="角色名称" :description="characterLockedHint ?? '聊天窗口显示的 AI 昵称'">
+            <InputText v-model="CONFIG.system.ai_name" :disabled="characterLocked" />
+          </ConfigItem>
+          <ConfigItem name="L2D 模型" :description="characterLocked ? characterLockedHint : undefined">
+            <Select
+              ref="modelSelectRef"
+              :options="Object.keys(MODELS)"
+              :model-value="selectedModel"
+              :disabled="characterLocked"
+              @change="(event) => onModelChange(event.value)"
+            />
+          </ConfigItem>
+          <ConfigItem
+            layout="column"
+            name="系统提示词"
+            :description="characterLocked ? characterLockedHint : '编辑对话风格提示词，影响AI的回复风格和语言特点'"
+          >
+            <div class="flex flex-col gap-1 mt-3">
+              <Textarea v-model="SYSTEM_PROMPT" rows="10" class="resize-none" :disabled="characterLocked" />
+            </div>
+          </ConfigItem>
+        </div>
+      </ConfigGroup>
       <ConfigGroup value="audio" header="音乐设置">
         <div class="grid gap-4">
           <ConfigItem name="背景音乐" description="启用/关闭背景音乐">
@@ -203,7 +206,13 @@ function toggleFloatingMode(enabled: boolean) {
           </ConfigItem>
         </div>
       </ConfigGroup>
-      <ConfigGroup value="portal" header="账号设置">
+      <ConfigGroup value="system">
+        <template #header>
+          <div class="flex w-full justify-between">
+            <span>系统设置</span>
+            <span>v{{ CONFIG.system.version }}</span>
+          </div>
+        </template>
         <div class="grid gap-4">
           <ConfigItem name="当前账号">
             <div v-if="nagaUser" class="flex items-center gap-3">
@@ -214,30 +223,8 @@ function toggleFloatingMode(enabled: boolean) {
             </div>
             <span v-else class="text-white/40">未登录</span>
           </ConfigItem>
-        </div>
-      </ConfigGroup>
-      <ConfigGroup value="system">
-        <template #header>
-          <div class="flex w-full justify-between">
-            <span>系统设置</span>
-            <span>v{{ CONFIG.system.version }}</span>
-          </div>
-        </template>
-        <div class="grid gap-4">
           <ConfigItem v-if="isElectron" name="开机自启动" description="系统启动时自动运行应用">
             <ToggleSwitch :model-value="autoLaunchEnabled" @update:model-value="onAutoLaunchChange" />
-          </ConfigItem>
-          <ConfigItem
-            layout="column"
-            name="系统提示词"
-            :description="characterLocked ? characterLockedHint : '编辑对话风格提示词，影响AI的回复风格和语言特点'"
-          >
-            <div class="flex flex-col gap-1 mt-3">
-              <Textarea v-model="SYSTEM_PROMPT" rows="10" class="resize-none" :disabled="characterLocked" />
-              <!-- <span v-if="characterLocked" class="text-xs text-amber-400/80 flex items-center gap-1">
-                <span>🔒</span> 由角色文件管理，请直接编辑 {{ CONFIG.system.active_character }}.json 中的 prompt_file
-              </span> -->
-            </div>
           </ConfigItem>
         </div>
       </ConfigGroup>
