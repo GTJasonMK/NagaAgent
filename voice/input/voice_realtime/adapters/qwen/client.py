@@ -137,7 +137,7 @@ class QwenVoiceClientRefactored:
     def _fix_ai_name(self, text: str) -> str:
         """
         修正AI响应中的名称引用
-        将Qwen-Omni相关的自我介绍替换为娜迦日达
+        将Qwen-Omni相关的自我介绍替换为娜杰日达
         """
         if not text:
             return text
@@ -145,26 +145,26 @@ class QwenVoiceClientRefactored:
         # 替换各种可能的自我介绍模式
         replacements = [
             # 英文变体
-            ("Qwen-Omni", "娜迦日达"),
-            ("Qwen Omni", "娜迦日达"),
-            ("QwenOmni", "娜迦日达"),
-            ("I am Qwen", "我是娜迦日达"),
-            ("I'm Qwen", "我是娜迦日达"),
-            ("My name is Qwen", "我叫娜迦日达"),
+            ("Qwen-Omni", "娜杰日达"),
+            ("Qwen Omni", "娜杰日达"),
+            ("QwenOmni", "娜杰日达"),
+            ("I am Qwen", "我是娜杰日达"),
+            ("I'm Qwen", "我是娜杰日达"),
+            ("My name is Qwen", "我叫娜杰日达"),
 
             # 中文变体
-            ("千问万相", "娜迦日达"),
-            ("千问", "娜迦日达"),
-            ("通义千问", "娜迦日达"),
-            ("我是Qwen", "我是娜迦日达"),
-            ("我叫Qwen", "我叫娜迦日达"),
-            ("我是千问", "我是娜迦日达"),
-            ("我叫千问", "我叫娜迦日达"),
+            ("千问万相", "娜杰日达"),
+            ("千问", "娜杰日达"),
+            ("通义千问", "娜杰日达"),
+            ("我是Qwen", "我是娜杰日达"),
+            ("我叫Qwen", "我叫娜杰日达"),
+            ("我是千问", "我是娜杰日达"),
+            ("我叫千问", "我叫娜杰日达"),
 
             # 确保大小写不敏感
-            ("qwen-omni", "娜迦日达"),
-            ("qwen omni", "娜迦日达"),
-            ("QWEN", "娜迦日达"),
+            ("qwen-omni", "娜杰日达"),
+            ("qwen omni", "娜杰日达"),
+            ("QWEN", "娜杰日达"),
         ]
 
         result = text
@@ -574,7 +574,7 @@ class QwenVoiceClientRefactored:
             except Exception as e:
                 logger.warning(f"加载语音提示词失败: {e}")
                 # 使用简单的默认指令
-                instructions = "你是娜迦日达，一位充满智慧与温度的AI伙伴。请用简洁、自然的口语化方式回答问题。"
+                instructions = "你是娜杰日达，一位充满智慧与温度的AI伙伴。请用简洁、自然的口语化方式回答问题。"
 
         # 尝试设置instructions参数
         session_config = {
