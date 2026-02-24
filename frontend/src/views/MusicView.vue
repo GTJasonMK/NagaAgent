@@ -77,7 +77,7 @@ onMounted(() => {
             音律坊
           </div>
           <div class="mt-1 text-xs text-white/40">
-            为娜迦定制的专属曲包，在节奏中同步思绪。
+            来自音之巷的音乐，购买专辑后在此播放。
           </div>
         </div>
         <div class="text-right text-xs text-white/40 flex flex-col items-end gap-1">
