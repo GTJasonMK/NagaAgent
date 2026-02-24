@@ -14,12 +14,39 @@ export interface Track {
   file: string
 }
 
-const TRACKS: Track[] = [
+const DEFAULT_TRACKS: Track[] = [
   { id: 1, title: '日常的小曲 · Everyday Tune', duration: '03:24', src: '/voices/background/8.日常的小曲.mp3', file: '8.日常的小曲.mp3' },
   { id: 2, title: '快乐的小曲 · Happy Tune', duration: '03:07', src: '/voices/background/9.快乐的小曲.mp3', file: '9.快乐的小曲.mp3' },
 ]
 
-const tracks = ref<Track[]>([...TRACKS])
+function parseDisplayName(filename: string): string {
+  const name = filename.replace(/\.mp3$/i, '')
+  const match = name.match(/^\d+\.(.+)$/)
+  return match ? match[1]! : name
+}
+
+/** 从 localStorage 加载歌单，与音律坊编辑页一致 */
+function loadTracksFromStorage(): Track[] {
+  const saved = localStorage.getItem('music-playlist')
+  if (saved != null && saved !== '') {
+    try {
+      const savedIds = JSON.parse(saved) as string[]
+      return savedIds.map((filename, idx) => ({
+        id: idx + 1,
+        title: parseDisplayName(filename),
+        duration: '00:00',
+        src: `/voices/background/${filename}`,
+        file: filename,
+      }))
+    }
+    catch {
+      /* 解析失败用默认 */
+    }
+  }
+  return [...DEFAULT_TRACKS]
+}
+
+const tracks = ref<Track[]>(loadTracksFromStorage())
 const currentIndex = ref(0)
 const isPlaying = ref(false)
 const playMode = ref<'list' | 'shuffle' | 'single'>('list')
@@ -147,7 +174,7 @@ function togglePlayMode() {
 /** BGM 委托：按文件名切换曲目并播放（主界面/启动时调用） */
 function playFile(file: string) {
   initAudio()
-  const idx = TRACKS.findIndex(t => t.file === file || t.src.endsWith(file))
+  const idx = tracks.value.findIndex(t => t.file === file || t.src.endsWith(file))
   if (idx >= 0) {
     currentIndex.value = idx
     setupAudioForTrack()
@@ -163,6 +190,7 @@ function pauseBgm() {
 
 export function useMusicPlayer() {
   onMounted(() => {
+    tracks.value = loadTracksFromStorage()
     initAudio()
     registerBgmDelegate({ playFile, pause: pauseBgm })
     if (audio && !audio.src)
@@ -174,6 +202,13 @@ export function useMusicPlayer() {
     if (audio)
       audio.volume = v
   })
+
+  /** 从 localStorage 重新加载歌单（编辑页保存后调用） */
+  function reloadPlaylist() {
+    tracks.value = loadTracksFromStorage()
+    if (currentIndex.value >= tracks.value.length)
+      currentIndex.value = Math.max(0, tracks.value.length - 1)
+  }
 
   return {
     tracks,
@@ -191,5 +226,6 @@ export function useMusicPlayer() {
     togglePlayMode,
     play,
     pause,
+    reloadPlaylist,
   }
 }

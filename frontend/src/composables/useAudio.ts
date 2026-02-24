@@ -62,6 +62,13 @@ let bgmCurrentFile = ''
 
 export function registerBgmDelegate(d: BgmDelegate) {
   bgmDelegate = d
+  // 委托注册后停掉兜底 BGM，避免与音乐盒双轨叠加
+  if (bgmAudio) {
+    bgmAudio.pause()
+    bgmAudio.src = ''
+    bgmAudio = null
+    bgmCurrentFile = ''
+  }
 }
 
 export function unregisterBgmDelegate() {
