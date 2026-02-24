@@ -766,8 +766,9 @@ def build_context_supplement(
         except Exception:
             available_mcp_tools = "（MCP服务未启动）"
 
-        # 直接读取原始模板并手动替换占位符，绕过 str.format()
-        raw_template = get_prompt_manager()._load_prompt("agentic_tool_prompt") or ""
+        # 工具提示词始终从 system/prompts/ 加载，不受角色切换影响
+        _sys_prompts = Path(__file__).parent / "prompts"
+        raw_template = (_sys_prompts / "agentic_tool_prompt.txt").read_text(encoding="utf-8") if (_sys_prompts / "agentic_tool_prompt.txt").exists() else ""
         tool_instructions = "\n\n" + raw_template.replace("{available_mcp_tools}", available_mcp_tools)
 
     # 激活技能指令
@@ -787,8 +788,10 @@ def build_context_supplement(
         except ImportError:
             pass
 
-    # 加载 tool_dispatch_prompt.txt 模板并替换占位符
-    raw_template = get_prompt_manager()._load_prompt("tool_dispatch_prompt") or ""
+    # 加载 tool_dispatch_prompt.txt 模板并替换占位符（始终从 system/prompts/ 加载）
+    _sys_prompts = Path(__file__).parent / "prompts"
+    _dispatch_file = _sys_prompts / "tool_dispatch_prompt.txt"
+    raw_template = _dispatch_file.read_text(encoding="utf-8") if _dispatch_file.exists() else ""
     result = raw_template.replace("{time_info}", time_info)
     result = result.replace("{skills_section}", skills_section)
     result = result.replace("{tool_instructions}", tool_instructions)
