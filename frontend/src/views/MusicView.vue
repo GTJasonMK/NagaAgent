@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import musicBox from '@/assets/icons/音乐盒.png'
 import BoxContainer from '@/components/BoxContainer.vue'
@@ -22,12 +22,41 @@ const {
   next,
   togglePlayMode,
   play,
+  seek,
   reloadPlaylist,
 } = useMusicPlayer()
 
 function selectTrack(index: number) {
   currentIndex.value = index
   play()
+}
+
+const barRef = ref<HTMLElement>()
+
+function getSeekRatio(clientX: number): number {
+  if (!barRef.value) return 0
+  const rect = barRef.value.getBoundingClientRect()
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+}
+
+function onBarSeek(e: MouseEvent | TouchEvent) {
+  const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+  seek(getSeekRatio(clientX) * duration.value)
+
+  const onMove = (ev: MouseEvent | TouchEvent) => {
+    const x = 'touches' in ev ? ev.touches[0].clientX : ev.clientX
+    seek(getSeekRatio(x) * duration.value)
+  }
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove)
+    document.removeEventListener('mouseup', onUp)
+    document.removeEventListener('touchmove', onMove)
+    document.removeEventListener('touchend', onUp)
+  }
+  document.addEventListener('mousemove', onMove)
+  document.addEventListener('mouseup', onUp)
+  document.addEventListener('touchmove', onMove)
+  document.addEventListener('touchend', onUp)
 }
 
 onMounted(() => {
@@ -125,13 +154,13 @@ onMounted(() => {
             <div class="time left">
               {{ tracks.length ? new Date(currentTime * 1000).toISOString().substring(14, 19) : '00:00' }}
             </div>
-            <div class="bar">
+            <div ref="barRef" class="bar" @mousedown="onBarSeek" @touchstart.prevent="onBarSeek">
               <div class="bar-bg" />
               <div class="bar-fill" :style="{ width: `${progress}%` }" />
               <div class="bar-thumb" :style="{ left: `${progress}%` }" />
             </div>
             <div class="time right">
-              {{ currentTrack?.duration ?? '00:00' }}
+              {{ duration > 0 ? new Date(duration * 1000).toISOString().substring(14, 19) : '00:00' }}
             </div>
           </div>
         </div>
@@ -343,6 +372,7 @@ onMounted(() => {
 .bar {
   position: relative;
   height: 6px;
+  cursor: pointer;
 }
 
 .bar-bg {
@@ -368,6 +398,7 @@ onMounted(() => {
   background: #e5e7eb;
   box-shadow: 0 0 6px rgba(248, 250, 252, 0.8);
   transform: translate(-50%, -50%);
+  cursor: pointer;
 }
 
 .track-title {
