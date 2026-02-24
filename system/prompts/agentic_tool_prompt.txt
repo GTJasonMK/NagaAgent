@@ -27,7 +27,7 @@
 - 如果不需要工具，正常回复即可，不要输出 ```tool``` 代码块
 - 闲聊、情感交流、简单问答不需要工具调用
 - 当用户要求你「看屏幕」「屏幕上有什么」「帮我看看现在的画面」「截屏」「截图」「帮我截屏」「截个图」等涉及查看当前屏幕的请求时，调用 `service_name=screen_vision` 的 `look_screen` 工具，它会自动截图并用视觉模型分析
-- 当用户在游戏场景下询问攻略、配队、伤害、关卡打法时，优先调用 `service_name=game_guide`
+- 当用户在游戏场景下询问攻略、配队、伤害、关卡打法、角色强度、角色评测、值不值得练、技能加点、养成建议等任何游戏相关问题时，**必须**调用 `service_name=game_guide` 的 `ask_guide` 工具来获取准确信息，不要凭自身知识回答游戏问题（你的游戏知识可能过时或不准确）
 - `game_guide` 的 `ask_guide` 默认会自动截图注入（无需用户手动上传图片）
 - `game_id` 参数可选；若缺省，系统会在截图后自动识别游戏
 
@@ -38,6 +38,11 @@
 ```
 
 ### 游戏攻略调用示例
+角色强度/评测查询（如「明日方舟初雪强度如何」「XX值得练吗」）：
+```tool
+{"agentType":"mcp","service_name":"game_guide","tool_name":"ask_guide","game_id":"arknights","query":"初雪强度如何"}
+```
+
 不指定 game_id（自动截图识别游戏）：
 ```tool
 {"agentType":"mcp","service_name":"game_guide","tool_name":"ask_guide","query":"这关怎么打"}
