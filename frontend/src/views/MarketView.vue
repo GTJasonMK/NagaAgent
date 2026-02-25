@@ -5,13 +5,13 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 
 const tabs = [
-  { id: 'album', label: '专辑' },
-  { id: 'mcp', label: 'mcp' },
-  { id: 'skill', label: '技能' },
-  { id: 'skin', label: '角色皮肤' },
-  { id: 'memory-skin', label: '记忆海皮肤' },
-  { id: 'memory-trade', label: '记忆交易' },
-  { id: 'recharge', label: '氪金' },
+  { id: 'skin', label: '界面背景' },
+  { id: 'album', label: '音之巷' },
+  { id: 'memory-skin', label: '角色注册' },
+  { id: 'memory-trade', label: '记忆云迁' },
+  { id: 'mcp', label: 'MCP工具' },
+  { id: 'skill', label: '智能体技能' },
+  { id: 'recharge', label: '模型充值' },
 ] as const
 
 const svgIcon = (...paths: string[]) => h('svg', { 'viewBox': '0 0 24 24', 'fill': 'none', 'stroke': 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'class': 'tab-icon-svg' }, paths.map(d => h('path', { d })))
@@ -27,15 +27,11 @@ const tabIcons: Record<string, { render: () => ReturnType<typeof h> }> = {
 }
 
 type TabId = typeof tabs[number]['id']
-const activeTab = ref<TabId>('album')
+const activeTab = ref<TabId>('skin')
 
-// 专辑示例数据
+// 专辑数据：仅保留沙之书，左上角角标为 NEW
 const albumItems = [
-  { id: 1, title: '向日葵之约', subtitle: '夏日微风', daysLeft: 16, price: 18, image: '/assets/just.png' },
-  { id: 2, title: '半甜草莓', subtitle: '测试', daysLeft: 6, price: 24, image: '/assets/just.png' },
-  { id: 3, title: '红丝带之约', subtitle: '测试', daysLeft: 12, price: 21, image: '/assets/just.png' },
-  { id: 4, title: '测试文本', subtitle: '测试', daysLeft: 30, price: 18, image: '/assets/just.png' },
-  { id: 5, title: '测试文本', subtitle: '测试', daysLeft: 8, price: 22, image: '/assets/just.png' },
+  { id: 1, title: '沙之书', subtitle: '', daysLeft: 0, price: 0, image: '/assets/just.png', bannerLabel: 'NEW' as const },
 ]
 
 // ── 拖动横向滚动 ──
@@ -133,7 +129,7 @@ function onDragStart(e: MouseEvent) {
               <div class="card-illust-gradient" />
               <div class="card-watermark">NagaAgent</div>
               <div class="card-banner">
-                剩余{{ item.daysLeft }}天
+                {{ item.bannerLabel ?? `剩余${item.daysLeft}天` }}
               </div>
             </div>
             <div class="card-info">
