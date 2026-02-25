@@ -1,5 +1,7 @@
+import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
-import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeTheme, shell, systemPreferences } from 'electron'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, nativeTheme, net, protocol, shell, systemPreferences } from 'electron'
 import { startBackend, stopBackend } from './modules/backend'
 import { registerHotkeys, unregisterHotkeys } from './modules/hotkeys'
 import { createMenu } from './modules/menu'
@@ -27,6 +29,13 @@ if (!gotTheLock) {
   app.quit()
 }
 
+// ── 自定义协议：naga-char:// 用于加载 characters 目录下的角色资源 ──
+const CHARACTERS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'characters')
+protocol.registerSchemesAsPrivileged([{
+  scheme: 'naga-char',
+  privileges: { secure: true, supportFetchAPI: true, stream: true },
+}])
+
 app.on('second-instance', () => {
   const win = getMainWindow()
   if (win) {
@@ -38,6 +47,16 @@ app.on('second-instance', () => {
 })
 
 app.whenReady().then(() => {
+  // naga-char://角色名/文件名 → characters/角色名/文件名
+  protocol.handle('naga-char', (request) => {
+    const relativePath = decodeURIComponent(request.url.slice('naga-char://'.length))
+    const filePath = resolve(CHARACTERS_DIR, relativePath)
+    if (!filePath.startsWith(CHARACTERS_DIR)) {
+      return new Response('Forbidden', { status: 403 })
+    }
+    return net.fetch(pathToFileURL(filePath).toString())
+  })
+
   // 强制暗色主题（确保原生菜单等 UI 为深色）
   nativeTheme.themeSource = 'dark'
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { h, ref } from 'vue'
+import { h, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
@@ -75,6 +75,76 @@ function onDragStart(e: MouseEvent) {
   document.addEventListener('mousemove', onPointerMove)
   document.addEventListener('mouseup', onPointerUp)
 }
+
+// ── 角色注册 ──
+interface CharacterCard {
+  id: string
+  name: string
+  bio: string
+  portraitUrl: string
+}
+
+// 立绘上半身占全图比例（显示顶部 50%）
+const UPPER_BODY_RATIO = 0.5
+
+const expandedCard = ref<string | null>(null)
+const charCardRefs: Record<string, HTMLElement> = {}
+const charImgCache: Record<string, HTMLImageElement> = {}
+
+const characters: CharacterCard[] = [
+  {
+    id: 'nadezhda',
+    name: '娜杰日达',
+    bio: '由创造者柏斯阔落亲手创造的AI智能体，亦称娜迦。',
+    portraitUrl: 'naga-char://娜杰日达/Naga.png',
+  },
+]
+
+/**
+ * 根据卡片高度和立绘原始尺寸，计算收缩/展开宽度并写入 CSS 变量
+ * 收缩宽度 = cardH × 9/16
+ * 展开宽度 = 让立绘上半身完整展示（图片上半身高度 = cardH，反算宽度）
+ * 高度始终不变，简介面板绝对定位覆盖在卡片底部
+ */
+function computeCardWidths(charId: string) {
+  const el = charCardRefs[charId]
+  if (!el) return
+  const cardH = el.offsetHeight
+  if (cardH <= 0) return
+
+  // 收缩态：9:16 竖卡
+  el.style.setProperty('--collapsed-w', `${Math.round(cardH * 9 / 16)}px`)
+
+  const img = charImgCache[charId]
+  if (img?.naturalWidth) {
+    // 展开态：立绘上半身（naturalHeight × ratio）恰好填满整个卡片高度
+    const scale = cardH / (img.naturalHeight * UPPER_BODY_RATIO)
+    const expandedW = Math.round(img.naturalWidth * scale)
+    el.style.setProperty('--expanded-w', `${expandedW}px`)
+  }
+}
+
+function onPortraitLoad(charId: string, e: Event) {
+  charImgCache[charId] = e.target as HTMLImageElement
+  computeCardWidths(charId)
+}
+
+function setCardRef(charId: string, el: any) {
+  if (el) charCardRefs[charId] = el as HTMLElement
+}
+
+function toggleCard(id: string) {
+  expandedCard.value = expandedCard.value === id ? null : id
+}
+
+// 角色注册标签首次可见时，重新计算宽度（v-show 隐藏时 offsetHeight 为 0）
+watch(activeTab, (tab) => {
+  if (tab === 'memory-skin') {
+    nextTick(() => {
+      characters.forEach(c => computeCardWidths(c.id))
+    })
+  }
+})
 </script>
 
 <template>
@@ -144,8 +214,45 @@ function onDragStart(e: MouseEvent) {
         </div>
       </section>
 
+      <!-- 角色注册 -->
+      <section v-show="activeTab === 'memory-skin'" class="character-section">
+        <div class="character-grid">
+          <div
+            v-for="char in characters"
+            :key="char.id"
+            :ref="(el: any) => setCardRef(char.id, el)"
+            class="char-card"
+            :class="{ expanded: expandedCard === char.id }"
+            @click="toggleCard(char.id)"
+          >
+            <!-- 立绘图片：绝对定位，高度200%只显示上半身 -->
+            <img
+              :src="char.portraitUrl"
+              :alt="char.name"
+              class="char-portrait-img"
+              @load="onPortraitLoad(char.id, $event)"
+            >
+            <!-- 底部渐变遮罩 -->
+            <div class="char-portrait-gradient" />
+            <!-- 收缩态角色名 -->
+            <div class="char-name-tag">
+              {{ char.name }}
+            </div>
+            <!-- 展开态简介面板：绝对定位覆盖在卡片底部 -->
+            <div class="char-desc-panel">
+              <h3 class="char-desc-title">
+                {{ char.name }}
+              </h3>
+              <p class="char-desc-text">
+                {{ char.bio }}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- 其他标签占位 -->
-      <section v-show="activeTab !== 'album'" class="placeholder-section">
+      <section v-show="activeTab !== 'album' && activeTab !== 'memory-skin'" class="placeholder-section">
         <div class="placeholder-text">
           {{ tabs.find(t => t.id === activeTab)?.label }} — 敬请期待
         </div>
@@ -506,6 +613,163 @@ function onDragStart(e: MouseEvent) {
   font-weight: 800;
   color: #1e293b;
   letter-spacing: 0.02em;
+}
+
+/* ── 角色注册 ── */
+.character-section {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 16px 24px;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.character-section::-webkit-scrollbar {
+  height: 4px;
+}
+
+.character-section::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.character-section::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.25);
+  border-radius: 2px;
+}
+
+.character-grid {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+  align-items: stretch;
+}
+
+/* ── 角色卡：高度恒定，只变宽度，内部全部绝对定位 ── */
+.char-card {
+  position: relative;
+  height: 100%;
+  width: var(--collapsed-w, 150px);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(22, 26, 35, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  cursor: pointer;
+  transition:
+    width 0.5s cubic-bezier(0.33, 1, 0.68, 1),
+    border-color 0.3s,
+    box-shadow 0.3s;
+  flex-shrink: 0;
+}
+
+.char-card:hover {
+  border-color: rgba(212, 175, 55, 0.4);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.4),
+    0 0 12px rgba(212, 175, 55, 0.1);
+}
+
+.char-card.expanded {
+  width: var(--expanded-w, 300px);
+  border-color: transparent;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 24px rgba(251, 191, 36, 0.15);
+}
+
+/*
+ * 立绘图片：绝对定位，高度 = 卡片的 200%（1 / UPPER_BODY_RATIO）
+ * 卡片 overflow:hidden 只能看到图片顶部 50% → 即上半身
+ * 水平居中，收缩态两侧被裁剪形成遮罩效果
+ * 展开态卡片宽度 = 缩放后图片宽度 → 无裁剪，完整展示
+ */
+.char-portrait-img {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 200%;
+  width: auto;
+  max-width: none;
+  z-index: 0;
+}
+
+/* 立绘底部渐变遮罩 */
+.char-portrait-gradient {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 收缩态角色名：绝对定位在底部 */
+.char-name-tag {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.95);
+  font-family: 'Noto Serif SC', serif;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  z-index: 2;
+  transition: opacity 0.3s;
+}
+
+.char-card.expanded .char-name-tag {
+  opacity: 0;
+}
+
+/*
+ * 展开态简介面板：绝对定位覆盖在卡片底部
+ * 不占据任何布局空间，立绘区域高度始终不变
+ */
+.char-desc-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  padding: 10px 12px 12px;
+  background: linear-gradient(transparent, rgba(10, 12, 16, 0.92) 25%);
+  opacity: 0;
+  transform: translateY(100%);
+  transition:
+    opacity 0.4s ease,
+    transform 0.5s cubic-bezier(0.33, 1, 0.68, 1);
+  pointer-events: none;
+}
+
+.char-card.expanded .char-desc-panel {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.char-desc-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(251, 191, 36, 0.95);
+  font-family: 'Noto Serif SC', serif;
+  letter-spacing: 0.05em;
+}
+
+.char-desc-text {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(203, 213, 225, 0.85);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 /* ── 占位区 ── */

@@ -2,5 +2,7 @@
   "ai_name": "娜杰日达",
   "user_name": "用户",
   "live2d_model": "NagaTest2/NagaTest2.model3.json",
-  "prompt_file": "conversation_style_prompt.txt"
+  "prompt_file": "conversation_style_prompt.txt",
+  "portrait": "Naga.png",
+  "bio": "由创造者柏斯阔落亲手创造的AI智能体，亦称娜迦。"
 }
