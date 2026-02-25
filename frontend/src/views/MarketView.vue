@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { h, nextTick, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, h, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { CONFIG } from '@/utils/config'
 
 const router = useRouter()
+const route = useRoute()
 
 const tabs = [
   { id: 'skin', label: '界面背景' },
@@ -27,54 +29,62 @@ const tabIcons: Record<string, { render: () => ReturnType<typeof h> }> = {
 }
 
 type TabId = typeof tabs[number]['id']
-const activeTab = ref<TabId>('skin')
+const initTab = route.query.tab as string | undefined
+const activeTab = ref<TabId>(
+  tabs.some(t => t.id === initTab) ? initTab as TabId : 'skin',
+)
 
 // 专辑数据：仅保留沙之书，左上角角标为 NEW
 const albumItems = [
   { id: 1, title: '沙之书', subtitle: '', daysLeft: 0, price: 0, image: '/assets/just.png', bannerLabel: 'NEW' as const },
 ]
 
-// ── 拖动横向滚动 ──
+// ── 拖动横向滚动（通用） ──
 const albumSection = ref<HTMLElement | null>(null)
+const characterSectionRef = ref<HTMLElement | null>(null)
 
-let dragActive = false
-let dragStartX = 0
-let dragScrollLeft = 0
+let wasDragging = false
+const DRAG_THRESHOLD = 4
 
-function onPointerMove(e: MouseEvent) {
-  if (!dragActive || !albumSection.value)
-    return
-  const x = e.pageX - albumSection.value.getBoundingClientRect().left
-  const delta = x - dragStartX
-  albumSection.value.scrollLeft = dragScrollLeft - delta
+function initDragScroll(container: HTMLElement) {
+  container.addEventListener('mousedown', (e: MouseEvent) => {
+    let startX = e.clientX
+    let startScrollLeft = container.scrollLeft
+    let moved = false
+
+    container.style.cursor = 'grabbing'
+    document.body.style.cursor = 'grabbing'
+
+    function onMove(ev: MouseEvent) {
+      const dx = ev.clientX - startX
+      if (Math.abs(dx) > DRAG_THRESHOLD) moved = true
+      container.scrollLeft = startScrollLeft - dx
+    }
+
+    function onUp() {
+      wasDragging = moved
+      container.style.cursor = 'grab'
+      document.body.style.cursor = ''
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      // 在 click 事件触发后再重置标记
+      setTimeout(() => { wasDragging = false }, 0)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  })
+
+  container.addEventListener('wheel', (e: WheelEvent) => {
+    e.preventDefault()
+    container.scrollLeft += e.deltaY
+  }, { passive: false })
 }
 
-function onPointerUp() {
-  dragActive = false
-  document.removeEventListener('mousemove', onPointerMove)
-  document.removeEventListener('mouseup', onPointerUp)
-  if (albumSection.value)
-    albumSection.value.style.cursor = 'grab'
-  document.body.style.cursor = ''
-}
-
-function onWheel(e: WheelEvent) {
-  if (!albumSection.value)
-    return
-  albumSection.value.scrollLeft += e.deltaY
-}
-
-function onDragStart(e: MouseEvent) {
-  if (!albumSection.value)
-    return
-  dragActive = true
-  dragStartX = e.pageX - albumSection.value.getBoundingClientRect().left
-  dragScrollLeft = albumSection.value.scrollLeft
-  albumSection.value.style.cursor = 'grabbing'
-  document.body.style.cursor = 'grabbing'
-  document.addEventListener('mousemove', onPointerMove)
-  document.addEventListener('mouseup', onPointerUp)
-}
+onMounted(() => {
+  if (albumSection.value) initDragScroll(albumSection.value)
+  if (characterSectionRef.value) initDragScroll(characterSectionRef.value)
+})
 
 // ── 角色注册 ──
 interface CharacterCard {
@@ -84,12 +94,8 @@ interface CharacterCard {
   portraitUrl: string
 }
 
-// 立绘上半身占全图比例（显示顶部 50%）
-const UPPER_BODY_RATIO = 0.5
-
 const expandedCard = ref<string | null>(null)
 const charCardRefs: Record<string, HTMLElement> = {}
-const charImgCache: Record<string, HTMLImageElement> = {}
 
 const characters: CharacterCard[] = [
   {
@@ -100,33 +106,27 @@ const characters: CharacterCard[] = [
   },
 ]
 
-/**
- * 根据卡片高度和立绘原始尺寸，计算收缩/展开宽度并写入 CSS 变量
- * 收缩宽度 = cardH × 9/16
- * 展开宽度 = 让立绘上半身完整展示（图片上半身高度 = cardH，反算宽度）
- * 高度始终不变，简介面板绝对定位覆盖在卡片底部
- */
-function computeCardWidths(charId: string) {
-  const el = charCardRefs[charId]
-  if (!el) return
-  const cardH = el.offsetHeight
-  if (cardH <= 0) return
-
-  // 收缩态：9:16 竖卡
-  el.style.setProperty('--collapsed-w', `${Math.round(cardH * 9 / 16)}px`)
-
-  const img = charImgCache[charId]
-  if (img?.naturalWidth) {
-    // 展开态：立绘上半身（naturalHeight × ratio）恰好填满整个卡片高度
-    const scale = cardH / (img.naturalHeight * UPPER_BODY_RATIO)
-    const expandedW = Math.round(img.naturalWidth * scale)
-    el.style.setProperty('--expanded-w', `${expandedW}px`)
+// 立绘统一比例 3:4（宽:高），直接显示完整画布
+// 展开 = cardH × 3/4（原图宽高比）
+// 收缩 = cardH × 2/5
+function computeAllCardWidths() {
+  for (const char of characters) {
+    const el = charCardRefs[char.id]
+    if (!el) continue
+    const h = el.offsetHeight
+    if (h <= 0) continue
+    el.style.setProperty('--collapsed-w', `${Math.round(h * 2 / 5)}px`)
+    el.style.setProperty('--expanded-w', `${Math.round(h * 3 / 4)}px`)
   }
-}
-
-function onPortraitLoad(charId: string, e: Event) {
-  charImgCache[charId] = e.target as HTMLImageElement
-  computeCardWidths(charId)
+  // custom card
+  const customEl = charCardRefs['custom']
+  if (customEl) {
+    const ch = customEl.offsetHeight
+    if (ch > 0) {
+      customEl.style.setProperty('--collapsed-w', `${Math.round(ch * 2 / 5)}px`)
+      customEl.style.setProperty('--expanded-w', `${Math.round(ch * 3 / 4)}px`)
+    }
+  }
 }
 
 function setCardRef(charId: string, el: any) {
@@ -134,15 +134,45 @@ function setCardRef(charId: string, el: any) {
 }
 
 function toggleCard(id: string) {
+  if (wasDragging) return
   expandedCard.value = expandedCard.value === id ? null : id
 }
 
-// 角色注册标签首次可见时，重新计算宽度（v-show 隐藏时 offsetHeight 为 0）
+function onSectionClick() {
+  if (!wasDragging) expandedCard.value = null
+}
+
+function applyCharacter(name: string) {
+  CONFIG.value.system.active_character = name
+}
+
+// ── 自定义角色 ──
+const customChar = reactive({ name: '', modelFile: null as File | null, prompt: '' })
+const customReady = computed(() =>
+  customChar.name.trim() !== '' && customChar.modelFile !== null && customChar.prompt.trim() !== '',
+)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+function triggerFileInput() {
+  fileInputRef.value?.click()
+}
+
+function onFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (input.files && input.files.length > 0) {
+    customChar.modelFile = input.files[0]
+  }
+}
+
+function applyCustomCharacter() {
+  CONFIG.value.system.ai_name = customChar.name
+  CONFIG.value.system.active_character = ''
+}
+
+// 标签可见时实时计算宽度（v-show 隐藏时 offsetHeight 为 0）
 watch(activeTab, (tab) => {
   if (tab === 'memory-skin') {
-    nextTick(() => {
-      characters.forEach(c => computeCardWidths(c.id))
-    })
+    nextTick(computeAllCardWidths)
   }
 })
 </script>
@@ -185,8 +215,6 @@ watch(activeTab, (tab) => {
         v-show="activeTab === 'album'"
         ref="albumSection"
         class="album-section"
-        @mousedown="onDragStart"
-        @wheel.prevent="onWheel"
       >
         <div class="album-grid">
           <div
@@ -215,7 +243,7 @@ watch(activeTab, (tab) => {
       </section>
 
       <!-- 角色注册 -->
-      <section v-show="activeTab === 'memory-skin'" class="character-section">
+      <section v-show="activeTab === 'memory-skin'" ref="characterSectionRef" class="character-section" @click="onSectionClick">
         <div class="character-grid">
           <div
             v-for="char in characters"
@@ -223,14 +251,12 @@ watch(activeTab, (tab) => {
             :ref="(el: any) => setCardRef(char.id, el)"
             class="char-card"
             :class="{ expanded: expandedCard === char.id }"
-            @click="toggleCard(char.id)"
+            @click.stop="toggleCard(char.id)"
           >
-            <!-- 立绘图片：绝对定位，高度200%只显示上半身 -->
             <img
               :src="char.portraitUrl"
               :alt="char.name"
               class="char-portrait-img"
-              @load="onPortraitLoad(char.id, $event)"
             >
             <!-- 底部渐变遮罩 -->
             <div class="char-portrait-gradient" />
@@ -246,6 +272,72 @@ watch(activeTab, (tab) => {
               <p class="char-desc-text">
                 {{ char.bio }}
               </p>
+              <button
+                type="button"
+                class="char-apply-btn"
+                @click.stop="applyCharacter(char.name)"
+              >
+                录入角色
+              </button>
+            </div>
+          </div>
+
+          <!-- 自定义角色卡 -->
+          <div
+            :ref="(el: any) => setCardRef('custom', el)"
+            class="char-card custom-card"
+            :class="{ expanded: expandedCard === 'custom' }"
+            @click.stop="toggleCard('custom')"
+          >
+            <!-- 收缩态：+ 图标 + 文字 -->
+            <div v-if="expandedCard !== 'custom'" class="custom-collapsed">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span class="custom-label">自定义角色</span>
+            </div>
+            <!-- 展开态：表单 -->
+            <div v-else class="custom-form" @click.stop>
+              <label class="custom-field">
+                <span class="custom-field-label">角色名称</span>
+                <input
+                  v-model="customChar.name"
+                  type="text"
+                  class="custom-input"
+                  placeholder="输入角色名称"
+                >
+              </label>
+              <div class="custom-field">
+                <span class="custom-field-label">L2D 模型</span>
+                <input
+                  ref="fileInputRef"
+                  type="file"
+                  accept=".model3.json"
+                  style="display:none"
+                  @change="onFileChange"
+                >
+                <button type="button" class="custom-file-btn" @click="triggerFileInput">
+                  {{ customChar.modelFile ? customChar.modelFile.name : '选择 .model3.json 文件' }}
+                </button>
+              </div>
+              <label class="custom-field custom-field-grow">
+                <span class="custom-field-label">系统提示词</span>
+                <textarea
+                  v-model="customChar.prompt"
+                  class="custom-textarea"
+                  placeholder="输入系统提示词"
+                />
+              </label>
+              <button
+                type="button"
+                class="char-apply-btn"
+                :class="{ disabled: !customReady }"
+                :disabled="!customReady"
+                @click.stop="customReady && applyCustomCharacter()"
+              >
+                录入角色
+              </button>
             </div>
           </div>
         </div>
@@ -624,6 +716,8 @@ watch(activeTab, (tab) => {
   display: flex;
   align-items: stretch;
   min-height: 0;
+  cursor: grab;
+  user-select: none;
 }
 
 .character-section::-webkit-scrollbar {
@@ -650,7 +744,7 @@ watch(activeTab, (tab) => {
 .char-card {
   position: relative;
   height: 100%;
-  width: var(--collapsed-w, 150px);
+  width: var(--collapsed-w, 130px);
   border-radius: 12px;
   overflow: hidden;
   background: rgba(22, 26, 35, 0.95);
@@ -658,6 +752,7 @@ watch(activeTab, (tab) => {
   cursor: pointer;
   transition:
     width 0.5s cubic-bezier(0.33, 1, 0.68, 1),
+    background 0.3s,
     border-color 0.3s,
     box-shadow 0.3s;
   flex-shrink: 0;
@@ -672,26 +767,19 @@ watch(activeTab, (tab) => {
 
 .char-card.expanded {
   width: var(--expanded-w, 300px);
+  background: transparent;
   border-color: transparent;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.5),
-    0 0 24px rgba(251, 191, 36, 0.15);
+  box-shadow: none;
 }
 
-/*
- * 立绘图片：绝对定位，高度 = 卡片的 200%（1 / UPPER_BODY_RATIO）
- * 卡片 overflow:hidden 只能看到图片顶部 50% → 即上半身
- * 水平居中，收缩态两侧被裁剪形成遮罩效果
- * 展开态卡片宽度 = 缩放后图片宽度 → 无裁剪，完整展示
- */
 .char-portrait-img {
   position: absolute;
   top: 0;
+  bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  height: 200%;
+  height: 100%;
   width: auto;
-  max-width: none;
   z-index: 0;
 }
 
@@ -738,6 +826,8 @@ watch(activeTab, (tab) => {
   z-index: 3;
   padding: 10px 12px 12px;
   background: linear-gradient(transparent, rgba(10, 12, 16, 0.92) 25%);
+  display: flex;
+  flex-direction: column;
   opacity: 0;
   transform: translateY(100%);
   transition:
@@ -770,6 +860,156 @@ watch(activeTab, (tab) => {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* ── "录入角色"按钮 ── */
+.char-apply-btn {
+  margin-top: 8px;
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(251, 191, 36, 0.95);
+  background: transparent;
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.04em;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.char-apply-btn:hover {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.8);
+}
+
+.char-apply-btn.disabled {
+  color: rgba(148, 163, 184, 0.45);
+  border-color: rgba(148, 163, 184, 0.2);
+  cursor: not-allowed;
+}
+
+.char-apply-btn.disabled:hover {
+  background: transparent;
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+/* ── 自定义角色卡 ── */
+.custom-card {
+  background: rgba(22, 26, 35, 0.95);
+}
+
+.custom-card.expanded {
+  background: rgba(22, 26, 35, 0.95) !important;
+  border-color: rgba(148, 163, 184, 0.15) !important;
+  box-shadow: none !important;
+}
+
+.custom-collapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: rgba(248, 250, 252, 0.45);
+  transition: color 0.2s;
+}
+
+.custom-card:hover .custom-collapsed {
+  color: rgba(251, 191, 36, 0.8);
+}
+
+.custom-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+.custom-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 12px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.custom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.custom-field-grow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.custom-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(251, 191, 36, 0.85);
+  letter-spacing: 0.03em;
+}
+
+.custom-input {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.custom-input:focus {
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+.custom-file-btn {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: rgba(248, 250, 252, 0.7);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.custom-file-btn:hover {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.custom-textarea {
+  flex: 1;
+  min-height: 60px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.custom-textarea:focus {
+  border-color: rgba(251, 191, 36, 0.5);
 }
 
 /* ── 占位区 ── */

@@ -33,7 +33,7 @@ if (!gotTheLock) {
 const CHARACTERS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'characters')
 protocol.registerSchemesAsPrivileged([{
   scheme: 'naga-char',
-  privileges: { secure: true, supportFetchAPI: true, stream: true },
+  privileges: { secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
 }])
 
 app.on('second-instance', () => {
