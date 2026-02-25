@@ -24,8 +24,8 @@ defineExpose({
     :class="{ 'will-change-transform': parallax }"
     :style="parallax ? { transform: boxTransform } : undefined"
   >
-    <div class="flex items-center">
-      <img :src="back" class="w-[var(--nav-back-width)]" alt="" @click="$router.back">
+    <div class="back-btn flex items-center cursor-pointer shrink-0 mr-3" @click="$router.back">
+      <img :src="back" class="w-[var(--nav-back-width)]" alt="">
     </div>
     <div class="box flex min-h-0 min-w-0 overflow-hidden" :class="boxClass">
       <template v-if="noScroll">
@@ -52,11 +52,16 @@ defineExpose({
 </template>
 
 <style scoped>
+.back-btn {
+  transition: filter 0.2s ease;
+}
+.back-btn:hover {
+  filter: brightness(1.35);
+}
 ::-webkit-scrollbar {
   background-color: transparent;
   width: 6px;
 }
-
 ::-webkit-scrollbar-thumb {
   background-color: #fff3;
   border-radius: 3px;

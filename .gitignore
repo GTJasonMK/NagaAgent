@@ -164,6 +164,9 @@ dmypy.json
 # Models (large files)
 /models/
 
+# Frontend premium assets (paid backgrounds / music etc.)
+frontend/premium-assets/
+
 # Pyre type checker
 .pyre/
 

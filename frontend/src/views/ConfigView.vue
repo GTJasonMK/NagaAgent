@@ -3,6 +3,7 @@ import { useStorage } from '@vueuse/core'
 import { Accordion, Button, Divider, InputNumber, InputText, Select, Slider, Textarea, ToggleSwitch } from 'primevue'
 import { useToast } from 'primevue/usetoast'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import BoxContainer from '@/components/BoxContainer.vue'
 import ConfigGroup from '@/components/ConfigGroup.vue'
 import ConfigItem from '@/components/ConfigItem.vue'
@@ -43,6 +44,8 @@ function recoverUiConfig() {
   CONFIG.value.ui.user_name = DEFAULT_CONFIG.ui.user_name
   ssaaInputRef.value?.updateModel(null, DEFAULT_CONFIG.web_live2d.ssaa)
 }
+
+const configRouter = useRouter()
 
 const accordionValue = useStorage('accordion-config', [])
 
@@ -157,7 +160,13 @@ function toggleFloatingMode(enabled: boolean) {
           </ConfigItem>
         </div>
       </ConfigGroup>
-      <ConfigGroup value="character" header="角色档案">
+      <ConfigGroup value="character">
+        <template #header>
+          <div class="w-full flex justify-between items-center -my-1.5">
+            <span>角色档案</span>
+            <Button size="small" label="切换角色" @click.stop="configRouter.push('/market?tab=memory-skin')" />
+          </div>
+        </template>
         <div class="grid gap-4">
           <ConfigItem name="角色名称" :description="characterLockedHint ?? '聊天窗口显示的 AI 昵称'">
             <InputText v-model="CONFIG.system.ai_name" :disabled="characterLocked" />

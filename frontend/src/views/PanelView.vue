@@ -63,21 +63,21 @@ function enterFloatingMode() {
           </button>
 
           <div class="bg-#363837 text-white p-2 text-sm">
-            参数设置
+            娜迦网络
           </div>
           <div class="grow grid grid-cols-2 font-serif font-bold lh-none min-w-0">
             <ArkButton class="min-w-0" @click="useLink({ to: '/model' }).navigate">
-              <div class="size-full text-lg">模型链接</div>
+              <div class="size-full text-lg">网络入口</div>
             </ArkButton>
             <ArkButton class="min-w-0" @click="useLink({ to: '/memory' }).navigate">
-              <div class="size-full text-lg">记忆链接</div>
+              <div class="size-full text-lg">角色连接</div>
             </ArkButton>
           </div>
         </div>
         <ArkButton class="min-w-0" :icon="chip" title="终端<br>设置" @click="useLink({ to: '/config' }).navigate" />
       </div>
       <div class="grid grid-cols-2 -translate-x-1/5">
-        <ArkButton class="market-btn" :icon="market" title="枢机<br>集市" disabled />
+        <ArkButton class="market-btn" :icon="market" title="枢机<br>集市" @click="useLink({ to: '/market' }).navigate" />
         <ArkButton class="music-btn" :icon="musicBoxIcon" title="音律坊" @click="useLink({ to: '/music' }).navigate" />
       </div>
     </div>
@@ -85,16 +85,6 @@ function enterFloatingMode() {
 </template>
 
 <style scoped>
-.market-btn :deep(img) {
-  filter: grayscale(1) brightness(0.6) opacity(0.5);
-}
-
-.market-btn {
-  background-color: #d9d9d9 !important;
-  color: #a0a0a0 !important;
-  cursor: not-allowed !important;
-}
-
 .music-btn :deep(img) {
   filter: brightness(1.3) opacity(0.2);
   width: 4.5rem;

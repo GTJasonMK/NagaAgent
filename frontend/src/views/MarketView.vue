@@ -1,17 +1,19 @@
 <script setup lang="ts">
-import { h, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, h, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { CONFIG } from '@/utils/config'
 
 const router = useRouter()
+const route = useRoute()
 
 const tabs = [
-  { id: 'album', label: '专辑' },
-  { id: 'mcp', label: 'mcp' },
-  { id: 'skill', label: '技能' },
-  { id: 'skin', label: '角色皮肤' },
-  { id: 'memory-skin', label: '记忆海皮肤' },
-  { id: 'memory-trade', label: '记忆交易' },
-  { id: 'recharge', label: '氪金' },
+  { id: 'skin', label: '界面背景' },
+  { id: 'album', label: '音之巷' },
+  { id: 'memory-skin', label: '角色注册' },
+  { id: 'memory-trade', label: '记忆云迁' },
+  { id: 'mcp', label: 'MCP工具' },
+  { id: 'skill', label: '智能体技能' },
+  { id: 'recharge', label: '模型充值' },
 ] as const
 
 const svgIcon = (...paths: string[]) => h('svg', { 'viewBox': '0 0 24 24', 'fill': 'none', 'stroke': 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'class': 'tab-icon-svg' }, paths.map(d => h('path', { d })))
@@ -27,58 +29,152 @@ const tabIcons: Record<string, { render: () => ReturnType<typeof h> }> = {
 }
 
 type TabId = typeof tabs[number]['id']
-const activeTab = ref<TabId>('album')
+const initTab = route.query.tab as string | undefined
+const activeTab = ref<TabId>(
+  tabs.some(t => t.id === initTab) ? initTab as TabId : 'skin',
+)
 
-// 专辑示例数据
+// 专辑数据：仅保留沙之书，左上角角标为 NEW
 const albumItems = [
-  { id: 1, title: '向日葵之约', subtitle: '夏日微风', daysLeft: 16, price: 18, image: '/assets/just.png' },
-  { id: 2, title: '半甜草莓', subtitle: '测试', daysLeft: 6, price: 24, image: '/assets/just.png' },
-  { id: 3, title: '红丝带之约', subtitle: '测试', daysLeft: 12, price: 21, image: '/assets/just.png' },
-  { id: 4, title: '测试文本', subtitle: '测试', daysLeft: 30, price: 18, image: '/assets/just.png' },
-  { id: 5, title: '测试文本', subtitle: '测试', daysLeft: 8, price: 22, image: '/assets/just.png' },
+  { id: 1, title: '沙之书', subtitle: '', daysLeft: 0, price: 0, image: '/assets/just.png', bannerLabel: 'NEW' as const },
 ]
 
-// ── 拖动横向滚动 ──
+// ── 拖动横向滚动（通用） ──
 const albumSection = ref<HTMLElement | null>(null)
+const characterSectionRef = ref<HTMLElement | null>(null)
 
-let dragActive = false
-let dragStartX = 0
-let dragScrollLeft = 0
+let wasDragging = false
+const DRAG_THRESHOLD = 4
 
-function onPointerMove(e: MouseEvent) {
-  if (!dragActive || !albumSection.value)
-    return
-  const x = e.pageX - albumSection.value.getBoundingClientRect().left
-  const delta = x - dragStartX
-  albumSection.value.scrollLeft = dragScrollLeft - delta
+function initDragScroll(container: HTMLElement) {
+  container.addEventListener('mousedown', (e: MouseEvent) => {
+    let startX = e.clientX
+    let startScrollLeft = container.scrollLeft
+    let moved = false
+
+    container.style.cursor = 'grabbing'
+    document.body.style.cursor = 'grabbing'
+
+    function onMove(ev: MouseEvent) {
+      const dx = ev.clientX - startX
+      if (Math.abs(dx) > DRAG_THRESHOLD) moved = true
+      container.scrollLeft = startScrollLeft - dx
+    }
+
+    function onUp() {
+      wasDragging = moved
+      container.style.cursor = 'grab'
+      document.body.style.cursor = ''
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      // 在 click 事件触发后再重置标记
+      setTimeout(() => { wasDragging = false }, 0)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  })
+
+  container.addEventListener('wheel', (e: WheelEvent) => {
+    e.preventDefault()
+    container.scrollLeft += e.deltaY
+  }, { passive: false })
 }
 
-function onPointerUp() {
-  dragActive = false
-  document.removeEventListener('mousemove', onPointerMove)
-  document.removeEventListener('mouseup', onPointerUp)
-  if (albumSection.value)
-    albumSection.value.style.cursor = 'grab'
-  document.body.style.cursor = ''
+onMounted(() => {
+  if (albumSection.value) initDragScroll(albumSection.value)
+  if (characterSectionRef.value) initDragScroll(characterSectionRef.value)
+})
+
+// ── 角色注册 ──
+interface CharacterCard {
+  id: string
+  name: string
+  bio: string
+  portraitUrl: string
 }
 
-function onWheel(e: WheelEvent) {
-  if (!albumSection.value)
-    return
-  albumSection.value.scrollLeft += e.deltaY
+const expandedCard = ref<string | null>(null)
+const charCardRefs: Record<string, HTMLElement> = {}
+
+const characters: CharacterCard[] = [
+  {
+    id: 'nadezhda',
+    name: '娜杰日达',
+    bio: '由创造者柏斯阔落亲手创造的AI智能体，亦称娜迦。',
+    portraitUrl: 'naga-char://娜杰日达/Naga.png',
+  },
+]
+
+// 立绘统一比例 3:4（宽:高），直接显示完整画布
+// 展开 = cardH × 3/4（原图宽高比）
+// 收缩 = cardH × 2/5
+function computeAllCardWidths() {
+  for (const char of characters) {
+    const el = charCardRefs[char.id]
+    if (!el) continue
+    const h = el.offsetHeight
+    if (h <= 0) continue
+    el.style.setProperty('--collapsed-w', `${Math.round(h * 2 / 5)}px`)
+    el.style.setProperty('--expanded-w', `${Math.round(h * 3 / 4)}px`)
+  }
+  // custom card
+  const customEl = charCardRefs['custom']
+  if (customEl) {
+    const ch = customEl.offsetHeight
+    if (ch > 0) {
+      customEl.style.setProperty('--collapsed-w', `${Math.round(ch * 2 / 5)}px`)
+      customEl.style.setProperty('--expanded-w', `${Math.round(ch * 3 / 4)}px`)
+    }
+  }
 }
 
-function onDragStart(e: MouseEvent) {
-  if (!albumSection.value)
-    return
-  dragActive = true
-  dragStartX = e.pageX - albumSection.value.getBoundingClientRect().left
-  dragScrollLeft = albumSection.value.scrollLeft
-  albumSection.value.style.cursor = 'grabbing'
-  document.body.style.cursor = 'grabbing'
-  document.addEventListener('mousemove', onPointerMove)
-  document.addEventListener('mouseup', onPointerUp)
+function setCardRef(charId: string, el: any) {
+  if (el) charCardRefs[charId] = el as HTMLElement
 }
+
+function toggleCard(id: string) {
+  if (wasDragging) return
+  expandedCard.value = expandedCard.value === id ? null : id
+}
+
+function onSectionClick() {
+  if (!wasDragging) expandedCard.value = null
+}
+
+function applyCharacter(name: string) {
+  CONFIG.value.system.active_character = name
+}
+
+// ── 自定义角色 ──
+const customChar = reactive({ name: '', modelFile: null as File | null, prompt: '' })
+const customReady = computed(() =>
+  customChar.name.trim() !== '' && customChar.modelFile !== null && customChar.prompt.trim() !== '',
+)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+function triggerFileInput() {
+  fileInputRef.value?.click()
+}
+
+function onFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (input.files && input.files.length > 0) {
+    customChar.modelFile = input.files[0]
+  }
+}
+
+function applyCustomCharacter() {
+  CONFIG.value.system.ai_name = customChar.name
+  CONFIG.value.system.active_character = ''
+}
+
+// 标签可见时实时计算宽度（v-show 隐藏时 offsetHeight 为 0）
+watch(activeTab, (tab) => {
+  if (tab === 'memory-skin') {
+    nextTick(computeAllCardWidths)
+  }
+})
 </script>
 
 <template>
@@ -119,8 +215,6 @@ function onDragStart(e: MouseEvent) {
         v-show="activeTab === 'album'"
         ref="albumSection"
         class="album-section"
-        @mousedown="onDragStart"
-        @wheel.prevent="onWheel"
       >
         <div class="album-grid">
           <div
@@ -133,7 +227,7 @@ function onDragStart(e: MouseEvent) {
               <div class="card-illust-gradient" />
               <div class="card-watermark">NagaAgent</div>
               <div class="card-banner">
-                剩余{{ item.daysLeft }}天
+                {{ item.bannerLabel ?? `剩余${item.daysLeft}天` }}
               </div>
             </div>
             <div class="card-info">
@@ -148,8 +242,109 @@ function onDragStart(e: MouseEvent) {
         </div>
       </section>
 
+      <!-- 角色注册 -->
+      <section v-show="activeTab === 'memory-skin'" ref="characterSectionRef" class="character-section" @click="onSectionClick">
+        <div class="character-grid">
+          <div
+            v-for="char in characters"
+            :key="char.id"
+            :ref="(el: any) => setCardRef(char.id, el)"
+            class="char-card"
+            :class="{ expanded: expandedCard === char.id }"
+            @click.stop="toggleCard(char.id)"
+          >
+            <img
+              :src="char.portraitUrl"
+              :alt="char.name"
+              class="char-portrait-img"
+            >
+            <!-- 底部渐变遮罩 -->
+            <div class="char-portrait-gradient" />
+            <!-- 收缩态角色名 -->
+            <div class="char-name-tag">
+              {{ char.name }}
+            </div>
+            <!-- 展开态简介面板：绝对定位覆盖在卡片底部 -->
+            <div class="char-desc-panel">
+              <h3 class="char-desc-title">
+                {{ char.name }}
+              </h3>
+              <p class="char-desc-text">
+                {{ char.bio }}
+              </p>
+              <button
+                type="button"
+                class="char-apply-btn"
+                @click.stop="applyCharacter(char.name)"
+              >
+                录入角色
+              </button>
+            </div>
+          </div>
+
+          <!-- 自定义角色卡 -->
+          <div
+            :ref="(el: any) => setCardRef('custom', el)"
+            class="char-card custom-card"
+            :class="{ expanded: expandedCard === 'custom' }"
+            @click.stop="toggleCard('custom')"
+          >
+            <!-- 收缩态：+ 图标 + 文字 -->
+            <div v-if="expandedCard !== 'custom'" class="custom-collapsed">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span class="custom-label">自定义角色</span>
+            </div>
+            <!-- 展开态：表单 -->
+            <div v-else class="custom-form" @click.stop>
+              <label class="custom-field">
+                <span class="custom-field-label">角色名称</span>
+                <input
+                  v-model="customChar.name"
+                  type="text"
+                  class="custom-input"
+                  placeholder="输入角色名称"
+                >
+              </label>
+              <div class="custom-field">
+                <span class="custom-field-label">L2D 模型</span>
+                <input
+                  ref="fileInputRef"
+                  type="file"
+                  accept=".model3.json"
+                  style="display:none"
+                  @change="onFileChange"
+                >
+                <button type="button" class="custom-file-btn" @click="triggerFileInput">
+                  {{ customChar.modelFile ? customChar.modelFile.name : '选择 .model3.json 文件' }}
+                </button>
+              </div>
+              <label class="custom-field custom-field-grow">
+                <span class="custom-field-label">系统提示词</span>
+                <textarea
+                  v-model="customChar.prompt"
+                  class="custom-textarea"
+                  placeholder="输入系统提示词"
+                />
+              </label>
+              <button
+                type="button"
+                class="char-apply-btn"
+                :class="{ disabled: !customReady }"
+                :disabled="!customReady"
+                @click.stop="customReady && applyCustomCharacter()"
+              >
+                录入角色
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- 其他标签占位 -->
-      <section v-show="activeTab !== 'album'" class="placeholder-section">
+      <section v-show="activeTab !== 'album' && activeTab !== 'memory-skin'" class="placeholder-section">
         <div class="placeholder-text">
           {{ tabs.find(t => t.id === activeTab)?.label }} — 敬请期待
         </div>
@@ -510,6 +705,311 @@ function onDragStart(e: MouseEvent) {
   font-weight: 800;
   color: #1e293b;
   letter-spacing: 0.02em;
+}
+
+/* ── 角色注册 ── */
+.character-section {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 16px 24px;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+  cursor: grab;
+  user-select: none;
+}
+
+.character-section::-webkit-scrollbar {
+  height: 4px;
+}
+
+.character-section::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.character-section::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.25);
+  border-radius: 2px;
+}
+
+.character-grid {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+  align-items: stretch;
+}
+
+/* ── 角色卡：高度恒定，只变宽度，内部全部绝对定位 ── */
+.char-card {
+  position: relative;
+  height: 100%;
+  width: var(--collapsed-w, 130px);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(22, 26, 35, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  cursor: pointer;
+  transition:
+    width 0.5s cubic-bezier(0.33, 1, 0.68, 1),
+    background 0.3s,
+    border-color 0.3s,
+    box-shadow 0.3s;
+  flex-shrink: 0;
+}
+
+.char-card:hover {
+  border-color: rgba(212, 175, 55, 0.4);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.4),
+    0 0 12px rgba(212, 175, 55, 0.1);
+}
+
+.char-card.expanded {
+  width: var(--expanded-w, 300px);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.char-portrait-img {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 100%;
+  width: auto;
+  z-index: 0;
+}
+
+/* 立绘底部渐变遮罩 */
+.char-portrait-gradient {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 收缩态角色名：绝对定位在底部 */
+.char-name-tag {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.95);
+  font-family: 'Noto Serif SC', serif;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  z-index: 2;
+  transition: opacity 0.3s;
+}
+
+.char-card.expanded .char-name-tag {
+  opacity: 0;
+}
+
+/*
+ * 展开态简介面板：绝对定位覆盖在卡片底部
+ * 不占据任何布局空间，立绘区域高度始终不变
+ */
+.char-desc-panel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  padding: 10px 12px 12px;
+  background: linear-gradient(transparent, rgba(10, 12, 16, 0.92) 25%);
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(100%);
+  transition:
+    opacity 0.4s ease,
+    transform 0.5s cubic-bezier(0.33, 1, 0.68, 1);
+  pointer-events: none;
+}
+
+.char-card.expanded .char-desc-panel {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.char-desc-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(251, 191, 36, 0.95);
+  font-family: 'Noto Serif SC', serif;
+  letter-spacing: 0.05em;
+}
+
+.char-desc-text {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(203, 213, 225, 0.85);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── "录入角色"按钮 ── */
+.char-apply-btn {
+  margin-top: 8px;
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(251, 191, 36, 0.95);
+  background: transparent;
+  border: 1px solid rgba(251, 191, 36, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  letter-spacing: 0.04em;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.char-apply-btn:hover {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.8);
+}
+
+.char-apply-btn.disabled {
+  color: rgba(148, 163, 184, 0.45);
+  border-color: rgba(148, 163, 184, 0.2);
+  cursor: not-allowed;
+}
+
+.char-apply-btn.disabled:hover {
+  background: transparent;
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+/* ── 自定义角色卡 ── */
+.custom-card {
+  background: rgba(22, 26, 35, 0.95);
+}
+
+.custom-card.expanded {
+  background: rgba(22, 26, 35, 0.95) !important;
+  border-color: rgba(148, 163, 184, 0.15) !important;
+  box-shadow: none !important;
+}
+
+.custom-collapsed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: rgba(248, 250, 252, 0.45);
+  transition: color 0.2s;
+}
+
+.custom-card:hover .custom-collapsed {
+  color: rgba(251, 191, 36, 0.8);
+}
+
+.custom-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+.custom-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 12px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.custom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.custom-field-grow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.custom-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(251, 191, 36, 0.85);
+  letter-spacing: 0.03em;
+}
+
+.custom-input {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.custom-input:focus {
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+.custom-file-btn {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: rgba(248, 250, 252, 0.7);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px dashed rgba(148, 163, 184, 0.25);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.custom-file-btn:hover {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.custom-textarea {
+  flex: 1;
+  min-height: 60px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: rgba(248, 250, 252, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.custom-textarea:focus {
+  border-color: rgba(251, 191, 36, 0.5);
 }
 
 /* ── 占位区 ── */

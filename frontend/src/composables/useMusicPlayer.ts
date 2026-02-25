@@ -81,8 +81,14 @@ function initAudio() {
     duration.value = audio.duration || duration.value
   })
   audio.addEventListener('loadedmetadata', () => {
-    if (audio)
+    if (audio) {
       duration.value = audio.duration
+      // 更新当前 track 的 duration 字段，用于列表显示
+      const track = tracks.value[currentIndex.value]
+      if (track && audio.duration && isFinite(audio.duration)) {
+        track.duration = new Date(audio.duration * 1000).toISOString().substring(14, 19)
+      }
+    }
   })
   audio.addEventListener('ended', handleEnded)
 }
@@ -112,9 +118,8 @@ function handleEnded() {
     }
   }
   else {
+    isPlaying.value = true // 标记为播放中，watcher 调用 setupAudioForTrack 时会自动 play
     next()
-    // 播完会先触发 pause 使 isPlaying=false，setupAudioForTrack 内不会自动 play，这里显式续播下一首
-    play()
   }
 }
 
@@ -145,7 +150,6 @@ function prev() {
   if (!tracks.value.length)
     return
   currentIndex.value = (currentIndex.value - 1 + tracks.value.length) % tracks.value.length
-  setupAudioForTrack()
 }
 
 function next() {
@@ -162,7 +166,11 @@ function next() {
   else {
     currentIndex.value = (currentIndex.value + 1) % tracks.value.length
   }
-  setupAudioForTrack()
+}
+
+function seek(time: number) {
+  if (!audio) return
+  audio.currentTime = Math.max(0, Math.min(time, duration.value || 0))
 }
 
 function togglePlayMode() {
@@ -199,7 +207,7 @@ export function useMusicPlayer() {
       setupAudioForTrack() // 仅首次初始化，后续由 playBgm→playFile 驱动
   })
 
-  watch(currentTrack, setupAudioForTrack)
+  watch(currentTrack, setupAudioForTrack, { flush: 'sync' })
   watch(() => audioSettings.value.bgmVolume, (v) => {
     if (audio)
       audio.volume = v
@@ -228,6 +236,7 @@ export function useMusicPlayer() {
     togglePlayMode,
     play,
     pause,
+    seek,
     reloadPlaylist,
   }
 }
