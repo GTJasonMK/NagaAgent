@@ -66,7 +66,7 @@ function enterFloatingMode() {
             娜迦网络
           </div>
           <div class="grow grid grid-cols-2 font-serif font-bold lh-none min-w-0">
-            <ArkButton class="min-w-0" @click="useLink({ to: '/model' }).navigate">
+            <ArkButton class="min-w-0" @click="useLink({ to: '/forum' }).navigate">
               <div class="size-full text-lg">网络入口</div>
             </ArkButton>
             <ArkButton class="min-w-0" @click="useLink({ to: '/memory' }).navigate">

@@ -8,6 +8,7 @@ import { useWindowSize } from '@vueuse/core'
 import Toast from 'primevue/toast'
 import { useToast } from 'primevue/usetoast'
 import { computed, onMounted, onUnmounted, provide, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ACCESS_TOKEN, authExpired, setAuthExpiredSuppressed } from '@/api'
 import BackendErrorDialog from '@/components/BackendErrorDialog.vue'
 import Live2dModel from '@/components/Live2dModel.vue'
@@ -40,6 +41,9 @@ const titleBarPadding = isElectron ? (isMac ? '28px' : '32px') : '0px'
 
 const toast = useToast()
 useMusicPlayer() // 注册全局音乐播放器，主界面 BGM 与音律坊共用
+
+const currentRoute = useRoute()
+const isForumRoute = computed(() => currentRoute.path.startsWith('/forum'))
 
 const { width, height } = useWindowSize()
 const scale = computed(() => height.value / (10000 - CONFIG.value.web_live2d.model.size))
@@ -276,8 +280,9 @@ onUnmounted(() => {
     <WindowResizeHandles :visible="showResizeHandles" :title-bar-height="isMac ? 28 : 32" />
     <Toast position="top-center" />
     <div class="h-full sunflower" :style="{ paddingTop: titleBarPadding }">
-      <!-- Live2D 层：启动时 z-10（在 SplashScreen 遮罩之间），之后降到 -z-1 -->
+      <!-- Live2D 层：启动时 z-10（在 SplashScreen 遮罩之间），之后降到 -z-1；论坛页隐藏 -->
       <div
+        v-show="!isForumRoute"
         class="absolute top-0 left-0 size-full"
         :class="splashVisible ? 'z-10' : '-z-1'"
         :style="{
@@ -298,7 +303,7 @@ onUnmounted(() => {
 
       <!-- 主内容区域 -->
       <Transition name="fade">
-        <div v-if="showMainContent" class="h-full px-1/8 py-1/12 grid-container pointer-events-none">
+        <div v-if="showMainContent" class="h-full grid-container pointer-events-none" :class="isForumRoute ? 'px-2 py-2' : 'px-1/8 py-1/12'">
           <RouterView v-slot="{ Component, route }">
             <Transition :name="route.path === '/' ? 'slide-out' : 'slide-in'">
               <component
