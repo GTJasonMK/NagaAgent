@@ -405,7 +405,7 @@ class GuideEngineConfig(BaseModel):
     neo4j_user: str = Field(default="neo4j", description="攻略图谱Neo4j用户名")
     neo4j_password: str = Field(default="your_password", description="攻略图谱Neo4j密码")
     screenshot_monitor_index: int = Field(default=1, ge=1, description="自动截图显示器索引（mss）")
-    auto_screenshot_on_guide: bool = Field(default=True, description="攻略工具调用时是否默认自动截图")
+    auto_screenshot_on_guide: bool = Field(default=False, description="攻略工具调用时是否默认自动截图（建议关闭，由LLM按需传入auto_screenshot参数）")
 
 
 # 天气服务使用免费API，无需配置
@@ -712,6 +712,7 @@ def build_context_supplement(
     include_tool_instructions: bool = False,
     skill_name: Optional[str] = None,
     rag_section: str = "",
+    route_result=None,
 ) -> str:
     """
     构建附加知识内容（追加在 messages 末尾的独立 system 消息）
@@ -728,6 +729,10 @@ def build_context_supplement(
         include_tool_instructions: 是否注入工具调用指令（agentic loop 模式）
         skill_name: 用户主动选择的技能名称
         rag_section: RAG 记忆召回内容（由 api_server 传入）
+        route_result: IntentRouter 路由结果（RouteResult 或 None）
+            - None → 回退到当前行为（全量注入，向后兼容）
+            - needs_tools == False → 跳过工具指令和技能列表
+            - 有值 → 只注入路由指定的工具/服务文档
 
     Returns:
         渲染后的附加知识内容
@@ -741,35 +746,96 @@ def build_context_supplement(
         f"当前星期：{current_time.strftime('%A')}"
     )
 
+    # ── 根据 route_result 决定是否跳过工具/技能 ──
+    # route_result is None → 全量（向后兼容）
+    # route_result.needs_tools == False → 闲聊，跳过工具和技能
+    skip_tools = False
+    if route_result is not None and not route_result.needs_tools:
+        skip_tools = True
+
     # 技能元数据列表（仅在未主动选择技能时注入）
     skills_section = ""
-    if not skill_name and include_skills:
-        try:
-            from system.skill_manager import get_skills_prompt
+    if not skip_tools and not skill_name and include_skills:
+        if route_result is not None and route_result.needed_skills:
+            # 只列出路由指定的技能
+            try:
+                from system.skill_manager import get_skill_manager
+                mgr = get_skill_manager()
+                lines = ["## 可用技能", ""]
+                for meta in mgr.get_all_metadata():
+                    if meta.name in route_result.needed_skills:
+                        lines.append(f"### {meta.name}")
+                        lines.append(f"- **描述**: {meta.description}")
+                        if meta.tags:
+                            lines.append(f"- **标签**: {', '.join(meta.tags)}")
+                        lines.append("")
+                if len(lines) > 2:
+                    skills_section = "\n\n" + "\n".join(lines)
+            except ImportError:
+                pass
+        else:
+            # route_result is None → 全量注入技能列表
+            try:
+                from system.skill_manager import get_skills_prompt
 
-            skills_prompt = get_skills_prompt()
-            if skills_prompt:
-                skills_section = "\n\n" + skills_prompt
-        except ImportError:
-            pass
+                skills_prompt = get_skills_prompt()
+                if skills_prompt:
+                    skills_section = "\n\n" + skills_prompt
+            except ImportError:
+                pass
 
     # 工具调用指令
     tool_instructions = ""
-    if include_tool_instructions:
-        try:
-            from mcpserver.mcp_registry import auto_register_mcp
-
-            auto_register_mcp()  # 幂等
-            from mcpserver.mcp_manager import get_mcp_manager
-
-            available_mcp_tools = get_mcp_manager().format_available_services() or "（暂无MCP服务注册）"
-        except Exception:
-            available_mcp_tools = "（MCP服务未启动）"
-
-        # 工具提示词始终从 system/prompts/ 加载，不受角色切换影响
+    if not skip_tools and include_tool_instructions:
         _sys_prompts = Path(__file__).parent / "prompts"
-        raw_template = (_sys_prompts / "agentic_tool_prompt.txt").read_text(encoding="utf-8") if (_sys_prompts / "agentic_tool_prompt.txt").exists() else ""
-        tool_instructions = "\n\n" + raw_template.replace("{available_mcp_tools}", available_mcp_tools)
+
+        if route_result is not None:
+            # ── 按需注入：基础格式 + 选中服务的详细文档 ──
+            base_file = _sys_prompts / "agentic_tool_prompt_base.txt"
+            base_template = base_file.read_text(encoding="utf-8") if base_file.exists() else ""
+
+            services_doc = ""
+            # 注入选中的 MCP 服务文档
+            if route_result.needed_mcp:
+                try:
+                    from mcpserver.mcp_registry import auto_register_mcp
+                    auto_register_mcp()
+                    from mcpserver.mcp_manager import get_mcp_manager
+                    mcp_doc = get_mcp_manager().format_services_by_names(route_result.needed_mcp)
+                    if mcp_doc:
+                        services_doc += f"\n\n### 可用MCP服务\n{mcp_doc}"
+                except Exception:
+                    pass
+
+                # 注入服务特定调用规则和示例
+                services_file = _sys_prompts / "agentic_tool_prompt_services.txt"
+                if services_file.exists():
+                    services_template = services_file.read_text(encoding="utf-8")
+                    # 替换 MCP 工具占位符
+                    try:
+                        from mcpserver.mcp_manager import get_mcp_manager
+                        available_mcp_tools = get_mcp_manager().format_services_by_names(route_result.needed_mcp) or ""
+                    except Exception:
+                        available_mcp_tools = ""
+                    services_doc = "\n\n" + services_template.replace("{available_mcp_tools}", available_mcp_tools)
+
+            # 需要 openclaw 或 live2d 时，基础模板已包含其格式说明
+            tool_instructions = "\n\n" + base_template + services_doc
+        else:
+            # ── 全量注入（向后兼容） ──
+            try:
+                from mcpserver.mcp_registry import auto_register_mcp
+
+                auto_register_mcp()  # 幂等
+                from mcpserver.mcp_manager import get_mcp_manager
+
+                available_mcp_tools = get_mcp_manager().format_available_services() or "（暂无MCP服务注册）"
+            except Exception:
+                available_mcp_tools = "（MCP服务未启动）"
+
+            # 使用原始完整模板（向后兼容）
+            raw_template = (_sys_prompts / "agentic_tool_prompt.txt").read_text(encoding="utf-8") if (_sys_prompts / "agentic_tool_prompt.txt").exists() else ""
+            tool_instructions = "\n\n" + raw_template.replace("{available_mcp_tools}", available_mcp_tools)
 
     # 激活技能指令
     skill_active_section = ""

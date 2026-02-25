@@ -9,9 +9,12 @@ import { startToolPolling, stopToolPolling, toolMessage } from '@/composables/us
 import { CONFIG } from '@/utils/config'
 import { live2dState, setEmotion } from '@/utils/live2dController'
 import { CURRENT_SESSION_ID, formatRelativeTime, IS_TEMPORARY_SESSION, loadCurrentSession, MESSAGES, newSession, switchSession } from '@/utils/session'
-import { isPlaying, speak } from '@/utils/tts'
+import { isPlaying, speak, stop as stopTTS } from '@/utils/tts'
 
 export function chatStream(content: string, options?: { skill?: string, images?: string[] }) {
+  // 新问答开始时，立即中止上一次的 TTS 播放
+  stopTTS()
+
   MESSAGES.value.push({ role: 'user', content: options?.images?.length ? `[截图x${options.images.length}] ${content}` : content })
 
   API.chatStream(content, {

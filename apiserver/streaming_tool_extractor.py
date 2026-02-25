@@ -26,6 +26,11 @@ except ImportError:
 
 logger = logging.getLogger("StreamingToolCallExtractor")
 
+# TTS 文本分节常量
+MAX_SENTENCE_LENGTH = 80   # 缓冲池最大长度，超过即强制截断
+MIN_SENTENCE_LENGTH = 10   # 强制截断时的最小句子长度
+SECONDARY_BREAKS = "，、,— "  # 次要断点字符（逗号、顿号、空格、破折号）
+
 class CallbackManager:
     """回调函数管理器 - 统一处理同步/异步回调"""
     
@@ -67,7 +72,11 @@ class StreamingToolCallExtractor:
         self.text_buffer = ""  # 普通文本缓冲区
         self.complete_text = ""  # 完整文本内容
         self.sentence_endings = r"[。？！；\.\?\!\;]"  # 断句标点
-        
+
+        # 代码块跳过状态（不发送给 TTS）
+        self.in_code_block = False
+        self.backtick_count = 0
+
         # 使用回调管理器
         self.callback_manager = CallbackManager()
         
@@ -88,17 +97,16 @@ class StreamingToolCallExtractor:
     async def process_text_chunk(self, text_chunk: str):
         """
         处理文本块，实时按句切割并发送给语音集成
-        
+
         处理流程：
         1. 累积完整文本（用于最终保存）
-        2. 逐字符检查句子结束符
+        2. 逐字符检查：跳过代码块，检测句子结束符
         3. 遇到结束符时立即切割并发送完整句子到TTS
-        4. 保留未完成的句子部分继续累积
+        4. 缓冲区超过 MAX_SENTENCE_LENGTH 时强制截断
         """
         if not text_chunk:
             return None
-        
-        
+
         # 调用文本块回调，将文本发送到前端
         results = []
         result = await self.callback_manager.call_callback("text_chunk", text_chunk, "chunk")
@@ -107,39 +115,71 @@ class StreamingToolCallExtractor:
 
         # 累积完整文本（用于最终保存到数据库）
         self.complete_text += text_chunk
-            
-        # 实时按句切割并发送到TTS
+
+        # 逐字符累积并检查分节条件
         for char in text_chunk:
+            # --- 代码块检测：反引号计数 ---
+            if char == '`':
+                self.backtick_count += 1
+                continue  # 反引号本身不进入 TTS 缓冲区
+            else:
+                if self.backtick_count >= 3:
+                    # 切换代码块状态
+                    if not self.in_code_block:
+                        # 进入代码块前，把缓冲区文本发走并刷新语音缓冲区
+                        self._send_and_flush_voice(self.text_buffer.strip())
+                        self.text_buffer = ""
+                    self.in_code_block = not self.in_code_block
+                self.backtick_count = 0
+
+            # 代码块内容跳过，不发送给 TTS
+            if self.in_code_block:
+                continue
+
             self.text_buffer += char
-            # 检查是否遇到句子结束符（。？！；等）
+
+            # 条件1：遇到句子结束标点 → 立即截断发送
             if re.search(self.sentence_endings, char):
-                # 立即切割并发送完整句子到TTS
-                sentences = re.split(self.sentence_endings, self.text_buffer)
-                if len(sentences) > 1:
-                    complete_sentence = sentences[0] + char
-                    if complete_sentence.strip():
-                        # 立即发送到语音集成进行TTS合成（不阻塞文本流）
-                        self._send_to_voice_integration(complete_sentence)
-                    # 保留未完成的句子部分，继续累积
-                    remaining_sentences = [s for s in sentences[1:] if s.strip()]
-                    self.text_buffer = "".join(remaining_sentences)
+                sentence = self.text_buffer.strip()
+                if sentence:
+                    self._send_to_voice_integration(sentence)
+                self.text_buffer = ""
+
+            # 条件2：缓冲区超过最大长度且无标点 → 强制截断
+            elif len(self.text_buffer) >= MAX_SENTENCE_LENGTH:
+                cut_pos = self._find_best_cut_position(self.text_buffer)
+                sentence = self.text_buffer[:cut_pos].strip()
+                if sentence:
+                    self._send_to_voice_integration(sentence)
+                self.text_buffer = self.text_buffer[cut_pos:]
+
         return results if results else None
+
+    def _find_best_cut_position(self, text: str) -> int:
+        """在缓冲区中找到最佳截断位置（从后往前找次要断点）"""
+        for i in range(len(text) - 1, MIN_SENTENCE_LENGTH - 1, -1):
+            if text[i] in SECONDARY_BREAKS:
+                return i + 1  # 断点字符包含在前一段
+        # 无任何断点 → 直接在最大长度处截断
+        return len(text)
     
     async def _flush_text_buffer(self):
         """刷新文本缓冲区 - 处理流式结束时的剩余文本"""
-        if self.text_buffer:
-            # 立即发送剩余的未完成句子到语音集成（不阻塞）
-            self._send_to_voice_integration(self.text_buffer)
-            
-            self.text_buffer = ""
-            return None
+        # 处理末尾未结束的反引号序列
+        if self.backtick_count >= 3:
+            self.in_code_block = not self.in_code_block
+        self.backtick_count = 0
+
+        # 发送剩余文本并刷新语音缓冲区（确保无标点短文本也能进 TTS 队列）
+        text = self.text_buffer
+        self.text_buffer = ""
+        self._send_and_flush_voice(text)
         return None
     
     def _send_to_voice_integration(self, text: str):
         """发送文本到语音集成（不阻塞文本流）"""
         if self.voice_integration:
             try:
-                # 在独立线程中处理TTS，不阻塞文本流
                 import threading
                 threading.Thread(
                     target=self.voice_integration.receive_text_chunk,
@@ -148,18 +188,27 @@ class StreamingToolCallExtractor:
                 ).start()
             except Exception as e:
                 logger.error(f"发送到语音集成失败: {e}")
+
+    def _send_and_flush_voice(self, text: str = ""):
+        """发送文本并刷新语音集成缓冲区，确保所有剩余文本进入 TTS 队列。
+        在回复结束、进入代码块时调用。"""
+        if self.voice_integration:
+            try:
+                import threading
+                def _do():
+                    if text and text.strip():
+                        self.voice_integration.receive_text_chunk(text)
+                    self.voice_integration.finish_processing()
+                threading.Thread(target=_do, daemon=True).start()
+            except Exception as e:
+                logger.error(f"发送并刷新语音集成失败: {e}")
     
     async def finish_processing(self):
         """完成处理，清理剩余内容"""
-        results = []
-        
-        # 处理剩余的文本
-        if self.text_buffer:
-            result = await self._flush_text_buffer()
-            if result:
-                results.append(result)
-        
-        return results if results else None
+        # 无论 text_buffer 是否为空，都需要刷新语音缓冲区
+        # （voice_integration 可能还有未处理的文本）
+        await self._flush_text_buffer()
+        return None
     
     def get_complete_text(self) -> str:
         """获取完整文本内容"""
@@ -169,6 +218,8 @@ class StreamingToolCallExtractor:
         """重置提取器状态"""
         self.text_buffer = ""
         self.complete_text = ""
+        self.in_code_block = False
+        self.backtick_count = 0
     
     async def process_streaming_response(self, llm_service, messages: List[Dict], 
                                        temperature: float = 0.7, voice_integration=None):

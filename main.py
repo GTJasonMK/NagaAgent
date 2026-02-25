@@ -391,8 +391,98 @@ class ServiceManager:
         except Exception as e:
             logger.error(f"MCP服务系统初始化失败: {e}")
 
+def _kill_port_pids(port: int, my_pid: int) -> bool:
+    """杀掉占用指定端口的所有进程及其子进程树，返回是否杀掉了任何进程"""
+    killed = False
+    if sys.platform == "win32":
+        try:
+            result = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
+            for line in result.stdout.splitlines():
+                if f":{port}" in line and "LISTENING" in line:
+                    parts = line.split()
+                    pid = int(parts[-1])
+                    if pid != my_pid and pid > 0:
+                        # /T 连同子进程一起杀
+                        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
+                        print(f"   已终止占用端口 {port} 的进程树 (PID {pid})")
+                        killed = True
+        except Exception as e:
+            print(f"   ⚠️ 清理端口 {port} 时出错: {e}")
+    else:
+        pids_to_kill = set()
+        # 方法1: lsof -nP (跳过 DNS/端口名解析，macOS 上必须加)
+        try:
+            result = subprocess.run(
+                ["lsof", "-nP", "-t", "-i", f":{port}"],
+                capture_output=True, text=True, timeout=5,
+            )
+            for pid_str in result.stdout.strip().split("\n"):
+                pid_str = pid_str.strip()
+                if pid_str:
+                    try:
+                        pids_to_kill.add(int(pid_str))
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+
+        # 方法2: 如果 lsof 没找到，用 shell 管道兜底
+        if not pids_to_kill:
+            try:
+                result = subprocess.run(
+                    f"lsof -nP -i :{port} 2>/dev/null | grep LISTEN | awk '{{print $2}}'",
+                    shell=True, capture_output=True, text=True, timeout=5,
+                )
+                for pid_str in result.stdout.strip().split("\n"):
+                    pid_str = pid_str.strip()
+                    if pid_str:
+                        try:
+                            pids_to_kill.add(int(pid_str))
+                        except ValueError:
+                            pass
+            except Exception:
+                pass
+
+        # 杀掉找到的进程及其整个进程组
+        for pid in pids_to_kill:
+            if pid == my_pid or pid <= 0:
+                continue
+            try:
+                # 先尝试杀整个进程组（杀掉 uvicorn workers 等子进程）
+                pgid = os.getpgid(pid)
+                if pgid != my_pid and pgid > 0:
+                    try:
+                        os.killpg(pgid, 9)
+                        print(f"   已终止占用端口 {port} 的进程组 (PGID {pgid})")
+                        killed = True
+                        continue
+                    except ProcessLookupError:
+                        pass
+            except (ProcessLookupError, PermissionError):
+                pass
+            # 回退：单独杀进程
+            try:
+                os.kill(pid, 9)
+                print(f"   已终止占用端口 {port} 的进程 (PID {pid})")
+                killed = True
+            except ProcessLookupError:
+                pass
+    return killed
+
+
+def _is_port_free(port: int) -> bool:
+    """检查端口是否已释放"""
+    import socket as _sock
+    try:
+        with _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM) as s:
+            s.bind(("0.0.0.0", port))
+            return True
+    except OSError:
+        return False
+
+
 def kill_port_occupiers():
-    """启动前杀掉占用后端端口的进程（跨平台）"""
+    """启动前杀掉占用后端端口的进程，循环重试直到所有端口释放（最多 30 轮 × 2s = 60 秒）"""
     from system.config import get_all_server_ports
     all_ports = get_all_server_ports()
     ports = [
@@ -402,47 +492,29 @@ def kill_port_occupiers():
         all_ports["tts_server"],
     ]
     my_pid = os.getpid()
-    killed = False
+    max_attempts = 30
 
-    if sys.platform == "win32":
-        for port in ports:
-            try:
-                result = subprocess.run(
-                    ["netstat", "-ano"], capture_output=True, text=True
-                )
-                for line in result.stdout.splitlines():
-                    if f":{port}" in line and "LISTENING" in line:
-                        parts = line.split()
-                        pid = int(parts[-1])
-                        if pid != my_pid and pid > 0:
-                            subprocess.run(["taskkill", "/F", "/PID", str(pid)],
-                                           capture_output=True)
-                            print(f"   已终止占用端口 {port} 的进程 (PID {pid})")
-                            killed = True
-            except Exception as e:
-                print(f"   ⚠️ 清理端口 {port} 时出错: {e}")
-    else:
-        # macOS/Linux: 合并为单次 lsof 调用
-        try:
-            port_args = ",".join(str(p) for p in ports)
-            result = subprocess.run(
-                ["lsof", "-ti", f":{port_args}"], capture_output=True, text=True
-            )
-            if result.stdout.strip():
-                for pid_str in result.stdout.strip().split("\n"):
-                    try:
-                        pid = int(pid_str.strip())
-                        if pid != my_pid and pid > 0:
-                            os.kill(pid, 9)
-                            print(f"   已终止占用端口的进程 (PID {pid})")
-                            killed = True
-                    except (ValueError, ProcessLookupError):
-                        pass
-        except Exception as e:
-            print(f"   ⚠️ 清理端口时出错: {e}")
+    for attempt in range(1, max_attempts + 1):
+        # 找出仍被占用的端口
+        busy = [p for p in ports if not _is_port_free(p)]
+        if not busy:
+            if attempt > 1:
+                print("   ✅ 所有端口已释放")
+            return
 
-    if killed:
-        time.sleep(0.5)  # SIGKILL 后端口释放很快，0.5s 足够
+        print(f"   第 {attempt}/{max_attempts} 轮清理: 端口 {', '.join(map(str, busy))} 被占用")
+        for port in busy:
+            _kill_port_pids(port, my_pid)
+
+        # 等待端口释放
+        wait = 2 if attempt < max_attempts else 0
+        if wait:
+            time.sleep(wait)
+
+    # 最终检查
+    still_busy = [p for p in ports if not _is_port_free(p)]
+    if still_busy:
+        print(f"   ⚠️ 端口 {', '.join(map(str, still_busy))} 仍被占用，将跳过对应服务")
 
 
 # 工具函数
