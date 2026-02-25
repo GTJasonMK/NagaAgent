@@ -63,14 +63,14 @@ function enterFloatingMode() {
           </button>
 
           <div class="bg-#363837 text-white p-2 text-sm">
-            参数设置
+            娜迦网络
           </div>
           <div class="grow grid grid-cols-2 font-serif font-bold lh-none min-w-0">
             <ArkButton class="min-w-0" @click="useLink({ to: '/model' }).navigate">
-              <div class="size-full text-lg">模型链接</div>
+              <div class="size-full text-lg">网络入口</div>
             </ArkButton>
             <ArkButton class="min-w-0" @click="useLink({ to: '/memory' }).navigate">
-              <div class="size-full text-lg">记忆链接</div>
+              <div class="size-full text-lg">角色连接</div>
             </ArkButton>
           </div>
         </div>
