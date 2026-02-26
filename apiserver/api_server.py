@@ -12,6 +12,7 @@ import os
 import logging
 import time
 import threading
+from datetime import datetime
 import subprocess
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional, AsyncGenerator, Any, Tuple
@@ -2252,3 +2253,184 @@ async def _send_ai_response_directly(session_id: str, response_text: str):
 
 # 工具执行结果已通过LLM总结并保存到对话历史中
 # UI可以通过查询历史获取工具执行结果
+
+
+# ============ 旅行端点 ============
+
+@app.post("/travel/start")
+async def travel_start(payload: Dict[str, Any]):
+    """创建旅行 session 并代理到 agent server 执行"""
+    from .travel_service import create_session, get_active_session
+
+    # 拒绝已有活跃 session
+    active = get_active_session()
+    if active:
+        raise HTTPException(409, f"已有进行中的旅行: {active.session_id}")
+
+    session = create_session(
+        time_limit_minutes=payload.get("time_limit_minutes", 300),
+        credit_limit=payload.get("credit_limit", 1000),
+        want_friends=payload.get("want_friends", True),
+        friend_description=payload.get("friend_description"),
+    )
+    # 代理到 agent server
+    try:
+        await _call_agentserver(
+            "POST", "/travel/execute",
+            json_body={"session_id": session.session_id},
+            timeout_seconds=10.0,
+        )
+    except Exception as e:
+        logger.warning(f"代理旅行到 agent server 失败（将本地标记失败）: {e}")
+        from .travel_service import load_session as _ls, save_session as _ss, TravelStatus
+        s = _ls(session.session_id)
+        s.status = TravelStatus.FAILED
+        s.error = f"agent server 不可达: {e}"
+        _ss(s)
+        raise HTTPException(503, f"agent server 不可达: {e}")
+
+    return {"status": "success", "session_id": session.session_id}
+
+
+@app.get("/travel/status")
+async def travel_status():
+    """返回当前活跃 session 或最新完成的"""
+    from .travel_service import get_active_session, list_sessions
+
+    active = get_active_session()
+    if active:
+        return {"status": "success", "session": active.model_dump(), "active": True}
+
+    sessions = list_sessions()
+    if sessions:
+        return {"status": "success", "session": sessions[0].model_dump(), "active": False}
+
+    return {"status": "success", "session": None, "active": False}
+
+
+@app.post("/travel/stop")
+async def travel_stop(payload: Dict[str, Any] = None):
+    """取消活跃 session"""
+    from .travel_service import get_active_session, save_session, TravelStatus
+
+    active = get_active_session()
+    if not active:
+        raise HTTPException(404, "没有进行中的旅行")
+
+    active.status = TravelStatus.CANCELLED
+    active.completed_at = datetime.now().isoformat()
+    save_session(active)
+    return {"status": "success", "session_id": active.session_id}
+
+
+@app.get("/travel/history")
+async def travel_history():
+    """历史列表"""
+    from .travel_service import list_sessions
+
+    sessions = list_sessions()
+    return {"status": "success", "sessions": [s.model_dump() for s in sessions]}
+
+
+@app.get("/travel/history/{session_id}")
+async def travel_history_detail(session_id: str):
+    """单个详情"""
+    from .travel_service import load_session
+
+    try:
+        session = load_session(session_id)
+    except FileNotFoundError:
+        raise HTTPException(404, f"旅行 session 不存在: {session_id}")
+    return {"status": "success", "session": session.model_dump()}
+
+
+# ============ 娜迦网络论坛代理 ============
+
+async def _call_nagabusiness(
+    method: str,
+    path: str,
+    request: Request = None,
+    json_body: Optional[Dict[str, Any]] = None,
+    params: Optional[Dict[str, Any]] = None,
+    timeout_seconds: float = 15.0,
+) -> Any:
+    """代理请求到 NagaBusiness 服务器"""
+    import httpx
+
+    cfg = get_config()
+    base_url = cfg.naga_business.forum_api_url.rstrip("/")
+    url = f"{base_url}{path}"
+
+    headers = {}
+    if request:
+        auth = request.headers.get("authorization", "")
+        if auth:
+            headers["Authorization"] = auth
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_seconds, trust_env=False) as client:
+            resp = await client.request(method, url, params=params, json=json_body, headers=headers)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"NagaBusiness 不可达: {e}")
+
+    if resp.status_code >= 400:
+        detail = resp.text
+        try:
+            detail = resp.json()
+        except Exception:
+            pass
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+
+    return resp.json()
+
+
+@app.get("/forum/api/posts")
+async def forum_get_posts(request: Request):
+    return await _call_nagabusiness("GET", "/forum/posts", request, params=dict(request.query_params))
+
+
+@app.get("/forum/api/posts/{post_id}")
+async def forum_get_post(post_id: str, request: Request):
+    return await _call_nagabusiness("GET", f"/forum/posts/{post_id}", request)
+
+
+@app.post("/forum/api/posts")
+async def forum_create_post(request: Request):
+    body = await request.json()
+    return await _call_nagabusiness("POST", "/forum/posts", request, json_body=body)
+
+
+@app.post("/forum/api/posts/{post_id}/like")
+async def forum_like_post(post_id: str, request: Request):
+    return await _call_nagabusiness("POST", f"/forum/posts/{post_id}/like", request)
+
+
+@app.post("/forum/api/posts/{post_id}/comments")
+async def forum_create_comment(post_id: str, request: Request):
+    body = await request.json()
+    return await _call_nagabusiness("POST", f"/forum/posts/{post_id}/comments", request, json_body=body)
+
+
+@app.post("/forum/api/comments/{comment_id}/like")
+async def forum_like_comment(comment_id: str, request: Request):
+    return await _call_nagabusiness("POST", f"/forum/comments/{comment_id}/like", request)
+
+
+@app.get("/forum/api/profile")
+async def forum_get_profile(request: Request):
+    return await _call_nagabusiness("GET", "/forum/profile", request)
+
+
+@app.get("/forum/api/messages")
+async def forum_get_messages(request: Request):
+    return await _call_nagabusiness("GET", "/forum/messages", request, params=dict(request.query_params))
+
+
+@app.post("/forum/api/friend-request/{req_id}/accept")
+async def forum_accept_friend(req_id: str, request: Request):
+    return await _call_nagabusiness("POST", f"/forum/friend-request/{req_id}/accept", request)
+
+
+@app.post("/forum/api/friend-request/{req_id}/decline")
+async def forum_decline_friend(req_id: str, request: Request):
+    return await _call_nagabusiness("POST", f"/forum/friend-request/{req_id}/decline", request)

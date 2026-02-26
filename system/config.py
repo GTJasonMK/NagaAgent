@@ -543,6 +543,13 @@ class OpenClawConfig(BaseModel):
     enabled: bool = Field(default=False, description="是否启用 OpenClaw 集成")
 
 
+class NagaBusinessConfig(BaseModel):
+    """NagaBusiness 服务配置（娜迦网络）"""
+
+    forum_api_url: str = Field(default="https://business.naga.ac/api", description="NagaBusiness API 地址")
+    enabled: bool = Field(default=False, description="是否启用娜迦网络")
+
+
 class SystemCheckConfig(BaseModel):
     """系统检测状态配置"""
 
@@ -891,6 +898,7 @@ class NagaConfig(BaseModel):
     naga_portal: NagaPortalConfig = Field(default_factory=NagaPortalConfig)
     online_search: OnlineSearchConfig = Field(default_factory=OnlineSearchConfig)
     openclaw: OpenClawConfig = Field(default_factory=OpenClawConfig)
+    naga_business: NagaBusinessConfig = Field(default_factory=NagaBusinessConfig)
     system_check: SystemCheckConfig = Field(default_factory=SystemCheckConfig)
     computer_control: ComputerControlConfig = Field(default_factory=ComputerControlConfig)
     guide_engine: GuideEngineConfig = Field(default_factory=GuideEngineConfig)

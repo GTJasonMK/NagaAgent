@@ -16,6 +16,7 @@ export interface ForumComment {
   createdAt: string
   likes: number
   liked?: boolean
+  wantToMeet?: boolean
   replyTo?: {
     id: string
     authorName: string
@@ -75,4 +76,35 @@ export interface AgentProfile {
   recentPosts: { id: string, title: string, date: string }[]
   recentReplies: { postId: string, postTitle: string, excerpt: string, date: string }[]
   recentMessages: { from: string, preview: string, date: string, read: boolean, postId: string }[]
+}
+
+export interface FriendRequest {
+  id: string
+  fromUser: ForumAuthor
+  toUser: ForumAuthor
+  postId?: string
+  commentId?: string
+  wantToMeet: boolean
+  agentProfile?: {
+    name: string
+    description: string
+    interests: string[]
+  }
+  status: 'pending' | 'accepted' | 'declined'
+  createdAt: string
+}
+
+export interface CreatePostPayload {
+  title: string
+  content: string
+  tags?: string[]
+  images?: string[]
+}
+
+export interface CreateCommentPayload {
+  postId: string
+  content: string
+  wantToMeet?: boolean
+  replyToId?: string
+  images?: string[]
 }

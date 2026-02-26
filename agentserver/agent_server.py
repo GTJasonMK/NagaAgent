@@ -1544,6 +1544,178 @@ async def openclaw_enable_skill(payload: Dict[str, Any]):
         raise HTTPException(500, f"操作失败: {e}")
 
 
+# ============ 旅行执行 ============
+
+@app.post("/travel/execute")
+async def travel_execute(payload: Dict[str, Any]):
+    """接收旅行 session_id，异步启动旅行协程"""
+    session_id = payload.get("session_id")
+    if not session_id:
+        raise HTTPException(400, "session_id 不能为空")
+
+    if not Modules.openclaw_client:
+        raise HTTPException(503, "OpenClaw 客户端未就绪")
+
+    asyncio.create_task(_run_travel_session(session_id))
+    return {"status": "accepted", "session_id": session_id}
+
+
+async def _run_travel_session(session_id: str):
+    """旅行主循环协程"""
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    from apiserver.travel_service import (
+        load_session, save_session, TravelStatus,
+        build_travel_prompt, build_social_prompt,
+        parse_discoveries, parse_social,
+    )
+
+    try:
+        session = load_session(session_id)
+    except FileNotFoundError:
+        logger.error(f"旅行 session 不存在: {session_id}")
+        return
+
+    session_key = f"travel:{session_id[:12]}"
+    session.openclaw_session_key = session_key
+    session.status = TravelStatus.RUNNING
+    session.started_at = datetime.now().isoformat()
+    save_session(session)
+
+    logger.info(f"[旅行] 开始旅行 session: {session_id}, key={session_key}")
+
+    try:
+        # 发送探索指令
+        await Modules.openclaw_client.send_message(
+            message=build_travel_prompt(session),
+            session_key=session_key,
+            name="NagaTravel",
+            timeout_seconds=0,
+        )
+
+        # 如果想社交，额外发送社交指令
+        if session.want_friends:
+            await Modules.openclaw_client.send_message(
+                message=build_social_prompt(session),
+                session_key=session_key,
+                name="NagaTravel",
+                timeout_seconds=0,
+            )
+
+        # 监控循环
+        start_time = datetime.fromisoformat(session.started_at)
+        seen_discovery_urls: set = set()
+        seen_social_keys: set = set()
+
+        while True:
+            await asyncio.sleep(60)
+
+            # 检查时间限制
+            elapsed = (datetime.now() - start_time).total_seconds() / 60
+            session.elapsed_minutes = round(elapsed, 1)
+
+            if elapsed >= session.time_limit_minutes:
+                logger.info(f"[旅行] 时间到达限制 {session.time_limit_minutes} 分钟")
+                break
+
+            # 重新加载 session（可能被外部 cancel）
+            try:
+                session = load_session(session_id)
+            except Exception:
+                break
+
+            if session.status == TravelStatus.CANCELLED:
+                logger.info(f"[旅行] session 已被取消: {session_id}")
+                return
+
+            # 轮询 OpenClaw 获取新消息
+            try:
+                history = await Modules.openclaw_client.get_sessions_history(
+                    session_key=session_key, limit=50, include_tools=False,
+                )
+                messages = history if isinstance(history, list) else history.get("messages", [])
+
+                # 解析发现和社交互动
+                new_discoveries = parse_discoveries(messages)
+                for d in new_discoveries:
+                    if d.url not in seen_discovery_urls:
+                        seen_discovery_urls.add(d.url)
+                        session.discoveries.append(d)
+
+                new_social = parse_social(messages)
+                for s in new_social:
+                    key = f"{s.type}:{s.post_id}:{s.content_preview[:30]}"
+                    if key not in seen_social_keys:
+                        seen_social_keys.add(key)
+                        session.social_interactions.append(s)
+
+            except Exception as e:
+                logger.warning(f"[旅行] 轮询历史失败: {e}")
+
+            session.elapsed_minutes = round(elapsed, 1)
+            save_session(session)
+
+        # 发送收尾指令
+        logger.info(f"[旅行] 发送收尾指令: {session_id}")
+        try:
+            await Modules.openclaw_client.send_message(
+                message="旅行时间到了，请总结你的发现。列出你访问过的最有趣的内容，以及任何社交互动。",
+                session_key=session_key,
+                name="NagaTravel",
+                timeout_seconds=300,
+            )
+
+            # 等待并获取最终回复
+            await asyncio.sleep(30)
+            history = await Modules.openclaw_client.get_sessions_history(
+                session_key=session_key, limit=5, include_tools=False,
+            )
+            messages = history if isinstance(history, list) else history.get("messages", [])
+            # 最后一条 assistant 消息作为 summary
+            for msg in reversed(messages):
+                role = msg.get("role", "")
+                if role == "assistant":
+                    session.summary = msg.get("content", "")[:2000]
+                    break
+        except Exception as e:
+            logger.warning(f"[旅行] 收尾指令失败: {e}")
+            session.summary = f"旅行完成，共发现 {len(session.discoveries)} 个内容。（收尾指令超时）"
+
+        session.status = TravelStatus.COMPLETED
+        session.completed_at = datetime.now().isoformat()
+        save_session(session)
+
+        logger.info(
+            f"[旅行] 完成: {session_id}, 发现={len(session.discoveries)}, 社交={len(session.social_interactions)}"
+        )
+
+        # QQ 通知
+        try:
+            summary_text = session.summary or "旅行已完成"
+            await Modules.openclaw_client.send_message(
+                message=f"🌍 旅行报告\n{summary_text}\n\n发现了 {len(session.discoveries)} 个有趣内容。",
+                channel="qq",
+                deliver=True,
+                session_key=session_key,
+                name="NagaTravel",
+                timeout_seconds=30,
+            )
+        except Exception as e:
+            logger.warning(f"[旅行] QQ 通知发送失败: {e}")
+
+    except Exception as e:
+        logger.error(f"[旅行] 异常: {e}", exc_info=True)
+        try:
+            session = load_session(session_id)
+            session.status = TravelStatus.FAILED
+            session.error = str(e)
+            session.completed_at = datetime.now().isoformat()
+            save_session(session)
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
     import uvicorn
     from agentserver.config import AGENT_SERVER_PORT

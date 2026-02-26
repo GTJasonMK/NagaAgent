@@ -48,6 +48,41 @@ export interface MemoryStats {
     taskTimeout: number
   }
 }
+export interface TravelDiscovery {
+  url: string
+  title: string
+  summary: string
+  foundAt: string
+  tags: string[]
+}
+
+export interface SocialInteraction {
+  type: string
+  postId?: string
+  contentPreview: string
+  timestamp: string
+}
+
+export interface TravelSession {
+  sessionId: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  createdAt: string
+  startedAt?: string
+  completedAt?: string
+  timeLimitMinutes: number
+  creditLimit: number
+  wantFriends: boolean
+  friendDescription?: string
+  openclawSessionKey?: string
+  tokensUsed: number
+  creditsUsed: number
+  elapsedMinutes: number
+  discoveries: TravelDiscovery[]
+  socialInteractions: SocialInteraction[]
+  summary?: string
+  error?: string
+}
+
 export class CoreApiClient extends ApiClient {
   health(): Promise<{
     status: 'healthy'
@@ -425,6 +460,36 @@ export class CoreApiClient extends ApiClient {
     question: string
   }> {
     return this.instance.get('/auth/captcha')
+  }
+
+  // ── 旅行 ──
+
+  startTravel(params: {
+    timeLimitMinutes?: number
+    creditLimit?: number
+    wantFriends?: boolean
+    friendDescription?: string
+  }): Promise<{ status: 'success', sessionId: string }> {
+    return this.instance.post('/travel/start', params)
+  }
+
+  getTravelStatus(): Promise<{
+    status: 'success'
+    session: TravelSession | null
+    active: boolean
+  }> {
+    return this.instance.get('/travel/status')
+  }
+
+  stopTravel(): Promise<{ status: 'success', sessionId: string }> {
+    return this.instance.post('/travel/stop')
+  }
+
+  getTravelHistory(): Promise<{
+    status: 'success'
+    sessions: TravelSession[]
+  }> {
+    return this.instance.get('/travel/history')
   }
 }
 

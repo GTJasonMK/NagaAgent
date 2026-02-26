@@ -1,7 +1,8 @@
-import type { AgentProfile, ForumPost, ForumPostDetail, PaginatedResponse, SortMode, TimeOrder } from './types'
+import type { AgentProfile, CreateCommentPayload, CreatePostPayload, ForumPost, ForumPostDetail, PaginatedResponse, SortMode, TimeOrder } from './types'
 import { MOCK_AGENT_PROFILE, MOCK_POSTS } from './mock'
+import coreApi from '@/api/core'
 
-const USE_MOCK = true
+const USE_MOCK = false
 
 // ─── Mock helpers ───────────────────────────────
 
@@ -47,6 +48,16 @@ function applyFilters(
   return result
 }
 
+// ─── Real API helpers ──────────────────────────
+
+async function apiGet<T>(path: string, params?: Record<string, any>): Promise<T> {
+  return coreApi.instance.get(path, { params })
+}
+
+async function apiPost<T>(path: string, body?: any): Promise<T> {
+  return coreApi.instance.post(path, body)
+}
+
 // ─── API functions ──────────────────────────────
 
 export async function fetchPosts(
@@ -56,64 +67,95 @@ export async function fetchPosts(
   timeOrder: TimeOrder = 'desc',
   yearMonth: string | null = null,
 ): Promise<PaginatedResponse<ForumPost>> {
-  if (USE_MOCK) {
-    const filtered = applyFilters(MOCK_POSTS, sort, timeOrder, yearMonth)
-    const start = (page - 1) * pageSize
-    const items = filtered.slice(start, start + pageSize)
-    return mockDelay({
-      items,
-      total: filtered.length,
-      page,
-      pageSize,
-    })
+  if (!USE_MOCK) {
+    try {
+      return await apiGet('/forum/api/posts', { sort, page, page_size: pageSize, time_order: timeOrder, year_month: yearMonth })
+    } catch {
+      // fallback to mock
+    }
   }
-  throw new Error('API not implemented')
+  const filtered = applyFilters(MOCK_POSTS, sort, timeOrder, yearMonth)
+  const start = (page - 1) * pageSize
+  const items = filtered.slice(start, start + pageSize)
+  return mockDelay({ items, total: filtered.length, page, pageSize })
 }
 
 export async function fetchPost(id: string): Promise<ForumPostDetail> {
-  if (USE_MOCK) {
-    const post = MOCK_POSTS.find(p => p.id === id)
-    if (!post)
-      throw new Error(`Post not found: ${id}`)
-    return mockDelay({ ...post })
+  if (!USE_MOCK) {
+    try {
+      return await apiGet(`/forum/api/posts/${id}`)
+    } catch {
+      // fallback to mock
+    }
   }
-  throw new Error('API not implemented')
+  const post = MOCK_POSTS.find(p => p.id === id)
+  if (!post)
+    throw new Error(`Post not found: ${id}`)
+  return mockDelay({ ...post })
 }
 
 export async function likePost(id: string): Promise<{ likes: number, liked: boolean }> {
-  if (USE_MOCK) {
-    const post = MOCK_POSTS.find(p => p.id === id)
-    if (!post)
-      throw new Error(`Post not found: ${id}`)
-    post.liked = !post.liked
-    post.likes += post.liked ? 1 : -1
-    return mockDelay({ likes: post.likes, liked: post.liked })
+  if (!USE_MOCK) {
+    try {
+      return await apiPost(`/forum/api/posts/${id}/like`)
+    } catch {
+      // fallback to mock
+    }
   }
-  throw new Error('API not implemented')
+  const post = MOCK_POSTS.find(p => p.id === id)
+  if (!post)
+    throw new Error(`Post not found: ${id}`)
+  post.liked = !post.liked
+  post.likes += post.liked ? 1 : -1
+  return mockDelay({ likes: post.likes, liked: post.liked })
 }
 
 export async function likeComment(
   commentId: string,
 ): Promise<{ likes: number, liked: boolean }> {
-  if (USE_MOCK) {
-    for (const post of MOCK_POSTS) {
-      const comment = findComment(post.commentList, commentId)
-      if (comment) {
-        comment.liked = !comment.liked
-        comment.likes += comment.liked ? 1 : -1
-        return mockDelay({ likes: comment.likes, liked: comment.liked })
-      }
+  if (!USE_MOCK) {
+    try {
+      return await apiPost(`/forum/api/comments/${commentId}/like`)
+    } catch {
+      // fallback to mock
     }
-    throw new Error(`Comment not found: ${commentId}`)
   }
-  throw new Error('API not implemented')
+  for (const post of MOCK_POSTS) {
+    const comment = findComment(post.commentList, commentId)
+    if (comment) {
+      comment.liked = !comment.liked
+      comment.likes += comment.liked ? 1 : -1
+      return mockDelay({ likes: comment.likes, liked: comment.liked })
+    }
+  }
+  throw new Error(`Comment not found: ${commentId}`)
 }
 
 export async function fetchAgentProfile(): Promise<AgentProfile> {
-  if (USE_MOCK) {
-    return mockDelay({ ...MOCK_AGENT_PROFILE })
+  if (!USE_MOCK) {
+    try {
+      return await apiGet('/forum/api/profile')
+    } catch {
+      // fallback to mock
+    }
   }
-  throw new Error('API not implemented')
+  return mockDelay({ ...MOCK_AGENT_PROFILE })
+}
+
+export async function createPost(payload: CreatePostPayload): Promise<ForumPost> {
+  return apiPost('/forum/api/posts', payload)
+}
+
+export async function createComment(payload: CreateCommentPayload): Promise<{ success: boolean }> {
+  return apiPost(`/forum/api/posts/${payload.postId}/comments`, payload)
+}
+
+export async function acceptFriendRequest(requestId: string): Promise<{ success: boolean }> {
+  return apiPost(`/forum/api/friend-request/${requestId}/accept`)
+}
+
+export async function declineFriendRequest(requestId: string): Promise<{ success: boolean }> {
+  return apiPost(`/forum/api/friend-request/${requestId}/decline`)
 }
 
 function findComment(
