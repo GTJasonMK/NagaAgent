@@ -48,7 +48,7 @@ class GuideEngineSettings:
     neo4j_password: str = "your_password"
     prompt_dir: str = "guide_engine/game_prompts"
     screenshot_monitor_index: int = 1
-    auto_screenshot_on_guide: bool = True
+    auto_screenshot_on_guide: bool = False
 
     @classmethod
     def from_runtime(cls) -> "GuideEngineSettings":

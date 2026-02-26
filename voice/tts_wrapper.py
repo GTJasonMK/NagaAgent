@@ -9,6 +9,8 @@ import logging
 import tempfile
 import edge_tts
 
+from system.config import config
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,9 +64,11 @@ class TTSWrapper:
             from apiserver import naga_auth
             if naga_auth.is_authenticated():
                 import requests as _req
+                # NagaBusiness TTS 使用独立的 voice 名称，不兼容 edge-tts 格式
+                naga_voice = getattr(config.tts, 'naga_voice', None) or "Cherry"
                 resp = _req.post(
                     naga_auth.NAGA_MODEL_URL + "/audio/speech",
-                    json={"model": "default", "input": text, "voice": voice,
+                    json={"model": "default", "input": text, "voice": naga_voice,
                           "response_format": response_format, "speed": speed},
                     headers={"Authorization": f"Bearer {naga_auth.get_access_token()}"},
                     timeout=30,

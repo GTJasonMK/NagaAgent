@@ -14,6 +14,7 @@ const router = createRouter({
   routes: [
     { path: '/', component: () => import('@/views/PanelView.vue') },
     { path: '/chat', component: () => import('@/views/MessageView.vue') },
+    { path: '/model', component: () => import('@/views/ModelView.vue') },
     {
       path: '/forum',
       component: () => import('@/forum/ForumLayout.vue'),

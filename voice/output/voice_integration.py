@@ -20,6 +20,7 @@ logger = logging.getLogger("VoiceIntegration")
 
 # 简化的句子结束标点（依赖apiserver的预处理）
 SENTENCE_ENDINGS = ["。", "！", "？", "；", ".", "!", "?", ";"]
+MAX_BUFFER_LENGTH = 100  # 第二层最大缓冲长度（防御性兜底）
 
 class VoiceIntegration:
     """语音集成模块 - 重构版本：依赖apiserver的流式TTS实现"""
@@ -139,29 +140,35 @@ class VoiceIntegration:
         self._check_and_queue_sentences()
         
     def _check_and_queue_sentences(self):
-        """检查并加入句子队列 - 简化版本，依赖apiserver的预处理（保持原始逻辑）"""
+        """检查并加入句子队列 - 循环处理所有完整句子"""
         if not self.text_buffer:
             return
-            
-        # 简单的句子结束检测（apiserver已经处理过复杂的标点分割）
-        sentence_endings = SENTENCE_ENDINGS
-        
-        for ending in sentence_endings:
-            if ending in self.text_buffer:
-                # 找到句子结束位置
-                end_pos = self.text_buffer.find(ending) + 1
+
+        # 循环处理：找到所有可切割的句子
+        while self.text_buffer:
+            # 找最早出现的句子结束标点
+            earliest_pos = -1
+            for ending in SENTENCE_ENDINGS:
+                pos = self.text_buffer.find(ending)
+                if pos != -1 and (earliest_pos == -1 or pos < earliest_pos):
+                    earliest_pos = pos
+
+            if earliest_pos != -1:
+                # 找到标点 → 切割
+                end_pos = earliest_pos + 1
                 sentence = self.text_buffer[:end_pos]
-                
-                # 检查句子是否有效
                 if sentence.strip():
-                    # 加入句子队列
                     self.sentence_queue.put(sentence)
                     logger.info(f"加入句子队列: {sentence[:50]}...")
-                    
-                    # 音频处理线程始终在运行，无需检查启动状态
-                
-                # 更新缓冲区
                 self.text_buffer = self.text_buffer[end_pos:]
+            elif len(self.text_buffer) >= MAX_BUFFER_LENGTH:
+                # 无标点但超长 → 强制切割
+                sentence = self.text_buffer[:MAX_BUFFER_LENGTH]
+                self.sentence_queue.put(sentence)
+                logger.info(f"强制截断加入队列: {sentence[:50]}...")
+                self.text_buffer = self.text_buffer[MAX_BUFFER_LENGTH:]
+            else:
+                # 无标点且未超长 → 等待更多文本
                 break
         
     def _start_audio_processing(self):
@@ -246,20 +253,24 @@ class VoiceIntegration:
             if not text.strip():
                 return None
                 
-            headers = {}
+            headers = {
+                "Content-Type": "application/json"
+            }
             payload = {
                 "input": text,
-                "voice": config.tts.default_voice,
+                "voice": config.tts.default_voice or "alloy",
                 "response_format": config.tts.default_format,
                 "speed": config.tts.default_speed
             }
 
-            # 认证态 → NagaModel 网关；否则 → 本地 FastAPI
+            # 认证态 → NagaBusiness 网关；否则 → 本地 edge-tts
             from apiserver import naga_auth
             if naga_auth.is_authenticated():
                 tts_url = naga_auth.NAGA_MODEL_URL + "/audio/speech"
                 headers["Authorization"] = f"Bearer {naga_auth.get_access_token()}"
                 payload["model"] = "default"
+                # NagaBusiness TTS 使用独立的 voice 名称（如 Cherry），不兼容 edge-tts 格式
+                payload["voice"] = getattr(config.tts, 'naga_voice', None) or "Cherry"
             else:
                 tts_url = self.tts_url  # http://127.0.0.1:{port}/v1/audio/speech
                 if config.tts.require_api_key:
@@ -279,7 +290,9 @@ class VoiceIntegration:
                 logger.debug(f"音频生成成功: {len(audio_data)} bytes")
                 return audio_data
             else:
-                logger.error(f"TTS API调用失败: {response.status_code} - {response.text}")
+                logger.error(f"TTS API调用失败: status={response.status_code}, url={tts_url}, "
+                           f"voice={payload.get('voice')}, text={text[:50]}..., "
+                           f"response={response.text[:200]}")
                 return None
                 
         except Exception as e:

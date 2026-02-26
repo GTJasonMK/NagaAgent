@@ -294,7 +294,9 @@ onUnmounted(() => {
       >
         <img src="/assets/light.png" alt="" class="absolute right-0 bottom-0 w-80vw h-60vw op-40 -z-1 will-change-transform" :style="{ transform: `translate(${lightTx}px, ${lightTy}px)` }">
         <Live2dModel
-          v-bind="CONFIG.web_live2d.model"
+          :source="CONFIG.web_live2d.model.source"
+          :x="CONFIG.web_live2d.model.x"
+          :y="CONFIG.web_live2d.model.y"
           :width="width" :height="height"
           :scale="scale" :ssaa="CONFIG.web_live2d.ssaa"
           @model-ready="onModelReady"

@@ -13,7 +13,7 @@
     "invocationCommands": [
       {
         "command": "ask_guide",
-        "description": "文字攻略问答。默认 auto_screenshot=true，调用时自动截图并注入图片上下文；game_id 可选，缺省时自动识别。",
+        "description": "文字攻略问答。auto_screenshot 参数控制是否截图（默认 false）；需要看游戏画面时传 true，纯文字问题不传。game_id 可选，缺省时若有截图会自动识别。",
         "example": "{\"tool_name\":\"ask_guide\",\"game_id\":\"arknights\",\"query\":\"这关怎么打\"}"
       },
       {

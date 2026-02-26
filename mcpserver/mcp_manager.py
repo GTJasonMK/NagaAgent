@@ -44,21 +44,36 @@ class MCPManager:
         """格式化服务列表为字符串，供提示词注入"""
         lines = []
         for name, manifest in MANIFEST_CACHE.items():
-            display_name = manifest.get("displayName", name)
-            desc = manifest.get("description", "")
-            tools = manifest.get("capabilities", {}).get("invocationCommands", [])
-            lines.append(f"- 服务名(service_name): {name}")
-            lines.append(f"  显示名: {display_name}")
-            lines.append(f"  描述: {desc}")
-            for tool in tools:
-                cmd = tool.get("command", "")
-                tool_desc = tool.get("description", "").split("\n")[0]
-                example = tool.get("example", "")
-                lines.append(f"  工具: {cmd} - {tool_desc}")
-                if example:
-                    lines.append(f"  示例: {example}")
-            lines.append("")
+            self._format_single_service(name, manifest, lines)
         return "\n".join(lines)
+
+    def format_services_by_names(self, names: list) -> str:
+        """只格式化指定名称的 MCP 服务文档"""
+        lines = []
+        for name in names:
+            manifest = MANIFEST_CACHE.get(name)
+            if not manifest:
+                continue
+            self._format_single_service(name, manifest, lines)
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_single_service(name: str, manifest: dict, lines: list):
+        """格式化单个 MCP 服务的文档（内部共享方法）"""
+        display_name = manifest.get("displayName", name)
+        desc = manifest.get("description", "")
+        tools = manifest.get("capabilities", {}).get("invocationCommands", [])
+        lines.append(f"- 服务名(service_name): {name}")
+        lines.append(f"  显示名: {display_name}")
+        lines.append(f"  描述: {desc}")
+        for tool in tools:
+            cmd = tool.get("command", "")
+            tool_desc = tool.get("description", "").split("\n")[0]
+            example = tool.get("example", "")
+            lines.append(f"  工具: {cmd} - {tool_desc}")
+            if example:
+                lines.append(f"  示例: {example}")
+        lines.append("")
 
     async def cleanup(self):
         """清理资源"""

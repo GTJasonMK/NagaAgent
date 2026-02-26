@@ -111,6 +111,8 @@ export function startBackend(): void {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     env,
+    // 创建独立进程组，关闭时用 process.kill(-pid) 杀掉所有子进程
+    detached: process.platform !== 'win32',
   })
 
   backendProcess.stdout?.on('data', (data: Buffer) => {
@@ -218,20 +220,22 @@ export function stopBackend(): void {
   }
 
   if (process.platform === 'win32') {
+    // /T 连同子进程树一起终止
     spawn('taskkill', ['/pid', String(pid), '/f', '/t'])
   } else {
-    // SIGTERM 让 Python 进程 os._exit(0) 立即退出
+    // 杀整个进程组（负 PID），确保 uvicorn workers 等子进程一起退出
     try {
-      process.kill(pid, 'SIGTERM')
+      process.kill(-pid, 'SIGTERM')
     } catch {
-      // already dead
+      // 进程组不存在，回退杀单个进程
+      try { process.kill(pid, 'SIGTERM') } catch { /* already dead */ }
     }
-    // 保险：200ms 后 SIGKILL（不 unref，确保定时器一定执行）
+    // 保险：200ms 后 SIGKILL 整个进程组
     setTimeout(() => {
       try {
-        process.kill(pid, 'SIGKILL')
+        process.kill(-pid, 'SIGKILL')
       } catch {
-        // already dead
+        try { process.kill(pid, 'SIGKILL') } catch { /* already dead */ }
       }
     }, 200)
   }

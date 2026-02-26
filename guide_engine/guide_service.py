@@ -12,7 +12,7 @@ from .models import GuideReference, GuideRequest, GuideResponse, get_guide_engin
 from .neo4j_service import Neo4jService
 from .prompt_manager import PromptManager
 from .query_router import QueryMode, RouteResult, get_query_router
-from .screenshot_provider import get_screenshot_provider
+from .screenshot_provider import compress_screenshot_data_url, get_screenshot_provider
 from .neo4j_service import Neo4jService
 
 
@@ -83,12 +83,15 @@ class GuideService:
         if request.auto_screenshot:
             try:
                 shot = get_screenshot_provider().capture_data_url()
-                images.append(shot.data_url)
+                # 压缩截图：PNG→JPEG，缩放到1280px，减小上传体积 (~8MB→~200KB)
+                compressed = compress_screenshot_data_url(shot.data_url)
+                images.append(compressed)
                 metadata["auto_screenshot"] = {
                     "width": shot.width,
                     "height": shot.height,
                     "monitor_index": shot.monitor_index,
                     "source": shot.source,
+                    "compressed": True,
                 }
             except Exception as exc:
                 metadata["auto_screenshot_error"] = str(exc)

@@ -551,6 +551,99 @@ async def auth_refresh(request: Request):
         raise HTTPException(status_code=401, detail=f"刷新失败: {str(e)}")
 
 
+# ============ TTS 代理（解决前端跨域问题） ============
+
+def _ensure_wav_header(audio_data: bytes) -> tuple[bytes, str]:
+    """检查音频数据是否有有效容器头部，若是 raw PCM 则包装为 WAV 格式（浏览器可播放）"""
+    if len(audio_data) < 4:
+        return audio_data, "audio/mpeg"
+
+    header = audio_data[:4]
+    # 只检测有可靠 magic bytes 的容器格式，MP3 sync word (0xFF 0xEx) 容易和 PCM 数据混淆
+    if header[:3] == b'ID3':                          # MP3 with ID3 tag
+        return audio_data, "audio/mpeg"
+    if header == b'RIFF':                              # WAV
+        return audio_data, "audio/wav"
+    if header == b'OggS':                              # OGG
+        return audio_data, "audio/ogg"
+    if header == b'fLaC':                              # FLAC
+        return audio_data, "audio/flac"
+
+    # 无法识别的格式 → 假定 raw PCM，包装为 WAV (24kHz, 16-bit, mono)
+    import struct
+    sample_rate = 24000
+    bits_per_sample = 16
+    num_channels = 1
+    data_size = len(audio_data)
+    byte_rate = sample_rate * num_channels * bits_per_sample // 8
+    block_align = num_channels * bits_per_sample // 8
+
+    wav_header = struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF',
+        36 + data_size,
+        b'WAVE',
+        b'fmt ',
+        16,
+        1,
+        num_channels,
+        sample_rate,
+        byte_rate,
+        block_align,
+        bits_per_sample,
+        b'data',
+        data_size,
+    )
+    logger.info(f"[TTS] raw PCM detected ({data_size} bytes), wrapped as WAV (24kHz/16bit/mono)")
+    return wav_header + audio_data, "audio/wav"
+
+
+@app.post("/tts/speech")
+async def tts_speech_proxy(request: Request):
+    """代理前端 TTS 请求到 NagaBusiness，避免浏览器 CORS 限制"""
+    import httpx
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    # 从前端请求头获取 token，或使用后端认证状态
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header and naga_auth.is_authenticated():
+        auth_header = f"Bearer {naga_auth.get_access_token()}"
+
+    if auth_header:
+        # 已登录 → 代理到 NagaBusiness
+        tts_url = naga_auth.NAGA_MODEL_URL + "/audio/speech"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": auth_header,
+        }
+    else:
+        # 未登录 → 转发到本地 edge-tts
+        tts_port = config.tts.port if hasattr(config, 'tts') else 5048
+        tts_url = f"http://localhost:{tts_port}/v1/audio/speech"
+        headers = {"Content-Type": "application/json"}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(tts_url, json=body, headers=headers)
+        if resp.status_code != 200:
+            logger.error(f"TTS 代理失败: {resp.status_code} url={tts_url}")
+            raise HTTPException(status_code=resp.status_code, detail="TTS service error")
+        # 检查音频格式，raw PCM 自动包装为 WAV
+        audio_data, content_type = _ensure_wav_header(resp.content)
+        from fastapi.responses import Response
+        return Response(content=audio_data, media_type=content_type)
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="TTS service timeout")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"TTS 代理异常: {e}")
+        raise HTTPException(status_code=502, detail=f"TTS proxy error: {str(e)}")
+
+
 # API路由
 @app.get("/", response_model=Dict[str, str])
 async def root():
@@ -816,30 +909,44 @@ async def chat(request: ChatRequest):
             session_id=session_id, system_prompt=system_prompt, current_message=effective_message
         )
 
-        # RAG 记忆召回 → 生成 rag_section
+        # RAG 记忆召回 + 意图路由 并行执行
         rag_section = ""
-        try:
-            from summer_memory.memory_client import get_remote_memory_client
+        route_result = None
 
-            remote_mem = get_remote_memory_client()
-            if remote_mem:
-                mem_result = await remote_mem.query_memory(question=request.message, limit=5)
-                if mem_result.get("success") and mem_result.get("quintuples"):
-                    quints = mem_result["quintuples"]
-                    mem_lines = []
-                    for q in quints:
-                        if isinstance(q, (list, tuple)) and len(q) >= 5:
-                            mem_lines.append(f"- {q[0]}({q[1]}) —[{q[2]}]→ {q[3]}({q[4]})")
-                        elif isinstance(q, dict):
-                            mem_lines.append(f"- {q.get('subject','')}({q.get('subject_type','')}) —[{q.get('predicate','')}]→ {q.get('object','')}({q.get('object_type','')})")
-                    if mem_lines:
-                        rag_section = "\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆，请参考这些信息回答：\n" + "\n".join(mem_lines)
-                        logger.info(f"[RAG] 召回 {len(mem_lines)} 条记忆注入上下文")
-                elif mem_result.get("success") and mem_result.get("answer"):
-                    rag_section = f"\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆：\n{mem_result['answer']}"
-                    logger.info(f"[RAG] 召回记忆（answer 模式）注入上下文")
-        except Exception as e:
-            logger.debug(f"[RAG] 记忆召回失败（不影响对话）: {e}")
+        async def _query_rag():
+            nonlocal rag_section
+            try:
+                from summer_memory.memory_client import get_remote_memory_client
+
+                remote_mem = get_remote_memory_client()
+                if remote_mem:
+                    mem_result = await remote_mem.query_memory(question=request.message, limit=5)
+                    if mem_result.get("success") and mem_result.get("quintuples"):
+                        quints = mem_result["quintuples"]
+                        mem_lines = []
+                        for q in quints:
+                            if isinstance(q, (list, tuple)) and len(q) >= 5:
+                                mem_lines.append(f"- {q[0]}({q[1]}) —[{q[2]}]→ {q[3]}({q[4]})")
+                            elif isinstance(q, dict):
+                                mem_lines.append(f"- {q.get('subject','')}({q.get('subject_type','')}) —[{q.get('predicate','')}]→ {q.get('object','')}({q.get('object_type','')})")
+                        if mem_lines:
+                            rag_section = "\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆，请参考这些信息回答：\n" + "\n".join(mem_lines)
+                            logger.info(f"[RAG] 召回 {len(mem_lines)} 条记忆注入上下文")
+                    elif mem_result.get("success") and mem_result.get("answer"):
+                        rag_section = f"\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆：\n{mem_result['answer']}"
+                        logger.info(f"[RAG] 召回记忆（answer 模式）注入上下文")
+            except Exception as e:
+                logger.debug(f"[RAG] 记忆召回失败（不影响对话）: {e}")
+
+        async def _classify():
+            nonlocal route_result
+            try:
+                from .intent_router import classify_intent
+                route_result = await classify_intent(messages, request.message)
+            except Exception as e:
+                logger.debug(f"[IntentRouter] 意图分类失败，回退全量: {e}")
+
+        await asyncio.gather(_query_rag(), _classify())
 
         # 构建附加知识并追加为 messages 末尾的 system 消息
         supplement = build_context_supplement(
@@ -847,6 +954,7 @@ async def chat(request: ChatRequest):
             include_tool_instructions=True,
             skill_name=request.skill,
             rag_section=rag_section,
+            route_result=route_result,
         )
         messages.append({"role": "system", "content": supplement})
 
@@ -906,30 +1014,44 @@ async def chat_stream(request: ChatRequest):
                 session_id=session_id, system_prompt=system_prompt, current_message=effective_message
             )
 
-            # ====== RAG 记忆召回 → 生成 rag_section ======
+            # ====== RAG 记忆召回 + 意图路由 并行执行 ======
             rag_section = ""
-            try:
-                from summer_memory.memory_client import get_remote_memory_client
+            route_result = None
 
-                remote_mem = get_remote_memory_client()
-                if remote_mem:
-                    mem_result = await remote_mem.query_memory(question=request.message, limit=5)
-                    if mem_result.get("success") and mem_result.get("quintuples"):
-                        quints = mem_result["quintuples"]
-                        mem_lines = []
-                        for q in quints:
-                            if isinstance(q, (list, tuple)) and len(q) >= 5:
-                                mem_lines.append(f"- {q[0]}({q[1]}) —[{q[2]}]→ {q[3]}({q[4]})")
-                            elif isinstance(q, dict):
-                                mem_lines.append(f"- {q.get('subject','')}({q.get('subject_type','')}) —[{q.get('predicate','')}]→ {q.get('object','')}({q.get('object_type','')})")
-                        if mem_lines:
-                            rag_section = "\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆，请参考这些信息回答：\n" + "\n".join(mem_lines)
-                            logger.info(f"[RAG] 召回 {len(mem_lines)} 条记忆注入上下文")
-                    elif mem_result.get("success") and mem_result.get("answer"):
-                        rag_section = f"\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆：\n{mem_result['answer']}"
-                        logger.info(f"[RAG] 召回记忆（answer 模式）注入上下文")
-            except Exception as e:
-                logger.debug(f"[RAG] 记忆召回失败（不影响对话）: {e}")
+            async def _query_rag_stream():
+                nonlocal rag_section
+                try:
+                    from summer_memory.memory_client import get_remote_memory_client
+
+                    remote_mem = get_remote_memory_client()
+                    if remote_mem:
+                        mem_result = await remote_mem.query_memory(question=request.message, limit=5)
+                        if mem_result.get("success") and mem_result.get("quintuples"):
+                            quints = mem_result["quintuples"]
+                            mem_lines = []
+                            for q in quints:
+                                if isinstance(q, (list, tuple)) and len(q) >= 5:
+                                    mem_lines.append(f"- {q[0]}({q[1]}) —[{q[2]}]→ {q[3]}({q[4]})")
+                                elif isinstance(q, dict):
+                                    mem_lines.append(f"- {q.get('subject','')}({q.get('subject_type','')}) —[{q.get('predicate','')}]→ {q.get('object','')}({q.get('object_type','')})")
+                            if mem_lines:
+                                rag_section = "\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆，请参考这些信息回答：\n" + "\n".join(mem_lines)
+                                logger.info(f"[RAG] 召回 {len(mem_lines)} 条记忆注入上下文")
+                        elif mem_result.get("success") and mem_result.get("answer"):
+                            rag_section = f"\n\n## 相关记忆\n\n以下是从知识图谱中检索到的与用户问题相关的记忆：\n{mem_result['answer']}"
+                            logger.info(f"[RAG] 召回记忆（answer 模式）注入上下文")
+                except Exception as e:
+                    logger.debug(f"[RAG] 记忆召回失败（不影响对话）: {e}")
+
+            async def _classify_stream():
+                nonlocal route_result
+                try:
+                    from .intent_router import classify_intent
+                    route_result = await classify_intent(messages, request.message)
+                except Exception as e:
+                    logger.debug(f"[IntentRouter] 意图分类失败，回退全量: {e}")
+
+            await asyncio.gather(_query_rag_stream(), _classify_stream())
 
             # 构建附加知识并追加为 messages 末尾的 system 消息
             supplement = build_context_supplement(
@@ -937,6 +1059,7 @@ async def chat_stream(request: ChatRequest):
                 include_tool_instructions=True,
                 skill_name=request.skill,
                 rag_section=rag_section,
+                route_result=route_result,
             )
             messages.append({"role": "system", "content": supplement})
 
