@@ -523,7 +523,13 @@ async function testConnection() {
             </ConfigItem>
           </div>
         </ConfigGroup>
-        <ConfigGroup value="audio" header="音乐设置">
+        <ConfigGroup value="audio">
+          <template #header>
+            <div class="w-full flex justify-between items-center -my-1.5">
+              <span>音乐设置</span>
+              <Button size="small" label="音律坊" @click.stop="configRouter.push('/music')" />
+            </div>
+          </template>
           <div class="grid gap-4">
             <ConfigItem name="背景音乐" description="启用/关闭背景音乐">
               <ToggleSwitch v-model="audioSettings.bgmEnabled" />

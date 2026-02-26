@@ -69,7 +69,7 @@ function enterFloatingMode() {
             <ArkButton class="min-w-0" @click="useLink({ to: '/model' }).navigate">
               <div class="size-full text-lg">旅行</div>
             </ArkButton>
-            <ArkButton class="min-w-0" @click="useLink({ to: '/memory' }).navigate">
+            <ArkButton class="min-w-0" @click="useLink({ to: '/forum' }).navigate">
               <div class="size-full text-lg">娜迦网络</div>
             </ArkButton>
           </div>

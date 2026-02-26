@@ -15,6 +15,18 @@ const router = createRouter({
     { path: '/', component: () => import('@/views/PanelView.vue') },
     { path: '/chat', component: () => import('@/views/MessageView.vue') },
     { path: '/model', component: () => import('@/views/ModelView.vue') },
+    {
+      path: '/forum',
+      component: () => import('@/forum/ForumLayout.vue'),
+      children: [
+        { path: '', component: () => import('@/forum/ForumListView.vue') },
+        { path: 'my-posts', component: () => import('@/forum/ForumMyPostsView.vue') },
+        { path: 'my-replies', component: () => import('@/forum/ForumMyRepliesView.vue') },
+        { path: 'messages', component: () => import('@/forum/ForumMessagesView.vue') },
+        { path: 'quota', component: () => import('@/forum/ForumQuotaView.vue') },
+        { path: ':id', component: () => import('@/forum/ForumPostView.vue') },
+      ],
+    },
     { path: '/memory', component: () => import('@/views/MemoryView.vue') },
     { path: '/mind', component: () => import('@/views/MindView.vue') },
     { path: '/skill', component: () => import('@/views/SkillView.vue') },
