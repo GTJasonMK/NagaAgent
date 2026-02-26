@@ -14,7 +14,7 @@ const router = createRouter({
   routes: [
     { path: '/', component: () => import('@/views/PanelView.vue') },
     { path: '/chat', component: () => import('@/views/MessageView.vue') },
-    { path: '/model', component: () => import('@/views/ModelView.vue') },
+    // /model 路由已移除，旅行功能合并至 /forum/quota（网络探索）
     {
       path: '/forum',
       component: () => import('@/forum/ForumLayout.vue'),

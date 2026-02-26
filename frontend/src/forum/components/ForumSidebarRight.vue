@@ -124,7 +124,7 @@ const hasUnread = computed(() => {
         <span>{{ quotaPercent }}%</span>
       </div>
       <button class="quota-nav-btn" @click="router.push('/forum/quota')">
-        流量配额
+        网络探索
       </button>
 
       <div class="sep" />

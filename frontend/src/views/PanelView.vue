@@ -63,14 +63,14 @@ function enterFloatingMode() {
           </button>
 
           <div class="bg-#363837 text-white p-2 text-sm">
-            社交
+            娜迦网络
           </div>
           <div class="grow grid grid-cols-2 font-serif font-bold lh-none min-w-0">
-            <ArkButton class="min-w-0" @click="useLink({ to: '/model' }).navigate">
-              <div class="size-full text-lg">旅行</div>
+            <ArkButton class="min-w-0" @click="useLink({ to: '/forum/quota' }).navigate">
+              <div class="size-full text-lg">探索</div>
             </ArkButton>
             <ArkButton class="min-w-0" @click="useLink({ to: '/forum' }).navigate">
-              <div class="size-full text-lg">娜迦网络</div>
+              <div class="size-full text-lg">社区主页</div>
             </ArkButton>
           </div>
         </div>
