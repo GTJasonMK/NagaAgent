@@ -19,6 +19,7 @@ import UpdateDialog from '@/components/UpdateDialog.vue'
 import WindowResizeHandles from '@/components/WindowResizeHandles.vue'
 import { playBgm, playClickEffect, stopBgm } from '@/composables/useAudio'
 import { isNagaLoggedIn, nagaUser, sessionRestored, useAuth } from '@/composables/useAuth'
+import { useBackground } from '@/composables/useBackground'
 import { useElectron } from '@/composables/useElectron'
 import { useMusicPlayer } from '@/composables/useMusicPlayer'
 import { useParallax } from '@/composables/useParallax'
@@ -44,6 +45,11 @@ useMusicPlayer() // 注册全局音乐播放器，主界面 BGM 与音律坊共�
 
 const currentRoute = useRoute()
 const isForumRoute = computed(() => currentRoute.path.startsWith('/forum'))
+
+// ── 自定义背景 ──
+const { activeBackground, getActiveBackgroundUrl } = useBackground()
+const hasCustomBg = computed(() => !!activeBackground.value)
+const customBgUrl = computed(() => getActiveBackgroundUrl())
 
 const { width, height } = useWindowSize()
 const scale = computed(() => height.value / (10000 - CONFIG.value.web_live2d.model.size))
@@ -279,7 +285,13 @@ onUnmounted(() => {
     <TitleBar />
     <WindowResizeHandles :visible="showResizeHandles" :title-bar-height="isMac ? 28 : 32" />
     <Toast position="top-center" />
-    <div class="h-full sunflower" :style="{ paddingTop: titleBarPadding }">
+    <div class="h-full" :class="{ sunflower: !hasCustomBg }" :style="{ paddingTop: titleBarPadding }">
+      <!-- 自定义背景层：覆盖向日葵边框 -->
+      <div
+        v-if="hasCustomBg"
+        class="custom-bg-layer"
+        :style="{ backgroundImage: `url(${customBgUrl})` }"
+      />
       <!-- Live2D 层：启动时 z-10（在 SplashScreen 遮罩之间），之后降到 -z-1；论坛页隐藏 -->
       <div
         v-show="!isForumRoute"
@@ -386,6 +398,16 @@ onUnmounted(() => {
   border-image-source: url('/assets/sunflower.9.png');
   border-image-slice: 50%;
   border-image-width: 10em;
+}
+
+.custom-bg-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }
 
 .grid-container {

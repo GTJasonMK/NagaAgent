@@ -31,10 +31,12 @@ if (!gotTheLock) {
 
 // ── 自定义协议：naga-char:// 用于加载 characters 目录下的角色资源 ──
 const CHARACTERS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'characters')
-protocol.registerSchemesAsPrivileged([{
-  scheme: 'naga-char',
-  privileges: { secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
-}])
+// ── 自定义协议：naga-bg:// 用于加载 premium-assets/backgrounds 目录下的背景图片 ──
+const BACKGROUNDS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'premium-assets', 'backgrounds')
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'naga-char', privileges: { secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+  { scheme: 'naga-bg', privileges: { secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+])
 
 app.on('second-instance', () => {
   const win = getMainWindow()
@@ -52,6 +54,16 @@ app.whenReady().then(() => {
     const relativePath = decodeURIComponent(request.url.slice('naga-char://'.length))
     const filePath = resolve(CHARACTERS_DIR, relativePath)
     if (!filePath.startsWith(CHARACTERS_DIR)) {
+      return new Response('Forbidden', { status: 403 })
+    }
+    return net.fetch(pathToFileURL(filePath).toString())
+  })
+
+  // naga-bg://文件名 → premium-assets/backgrounds/文件名
+  protocol.handle('naga-bg', (request) => {
+    const relativePath = decodeURIComponent(request.url.slice('naga-bg://'.length))
+    const filePath = resolve(BACKGROUNDS_DIR, relativePath)
+    if (!filePath.startsWith(BACKGROUNDS_DIR)) {
       return new Response('Forbidden', { status: 403 })
     }
     return net.fetch(pathToFileURL(filePath).toString())

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ScrollPanel from 'primevue/scrollpanel'
 import { computed, onMounted, ref } from 'vue'
+import { isNagaLoggedIn, nagaUser, refreshUserStats } from '@/composables/useAuth'
 import { useAgentProfile } from './useAgentProfile'
 import ForumSidebarLeft from './components/ForumSidebarLeft.vue'
 import ForumSidebarRight from './components/ForumSidebarRight.vue'
@@ -10,10 +11,29 @@ const { profile, load, setForumEnabled, setDailyBudget } = useAgentProfile()
 const editing = ref(false)
 const budgetInput = ref(100)
 
+// 使用真实用户积分（从服务器获取，与顶栏积分同步）
+const realCredits = computed(() => {
+  if (isNagaLoggedIn.value && nagaUser.value?.points != null) {
+    return nagaUser.value.points
+  }
+  return profile.value?.account.credits ?? 0
+})
+
+const realAccountName = computed(() => {
+  if (isNagaLoggedIn.value && nagaUser.value?.username) {
+    return nagaUser.value.username
+  }
+  return profile.value?.account.name ?? '--'
+})
+
 onMounted(async () => {
   await load()
   if (profile.value) {
     budgetInput.value = profile.value.quota.dailyBudget
+  }
+  // 刷新真实用户积分
+  if (isNagaLoggedIn.value) {
+    refreshUserStats()
   }
 })
 
@@ -91,10 +111,10 @@ function toggleForum() {
               </div>
               <div class="flex items-center gap-2 mt-2">
                 <span class="text-white/50 text-xs">账户</span>
-                <span class="text-white/80 text-sm font-bold">{{ profile.account.name }}</span>
+                <span class="text-white/80 text-sm font-bold">{{ realAccountName }}</span>
               </div>
               <div class="flex items-baseline gap-2 mt-1.5">
-                <span class="text-white/95 text-2xl font-bold font-mono">{{ profile.account.credits }}</span>
+                <span class="text-white/95 text-2xl font-bold font-mono">{{ realCredits }}</span>
                 <span class="text-white/30 text-xs">积分</span>
               </div>
               <div class="text-white/25 text-[10px] mt-1">智能体在论坛的所有活动将从此账户余额中扣除</div>
