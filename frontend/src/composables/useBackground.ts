@@ -1,58 +1,14 @@
 import { ref, watch } from 'vue'
 
 export interface BackgroundItem {
-  id: string
-  name: string
-  description: string
-  price: number // 积分
-  filename: string // filename in premium-assets/backgrounds/
+  id: string // filename (作为唯一标识)
+  name: string // 显示名称（去掉扩展名）
+  filename: string // 完整文件名
+  price: number // 兑换积分
 }
 
-// ── 背景目录（16:9 图片，放置于 premium-assets/backgrounds/） ──
-export const BACKGROUND_CATALOG: BackgroundItem[] = [
-  {
-    id: 'starry-night',
-    name: '星夜回廊',
-    description: '深邃星空下的无尽廊道，璀璨繁星照亮归途',
-    price: 200,
-    filename: 'starry-night.png',
-  },
-  {
-    id: 'golden-sunset',
-    name: '落日熔金',
-    description: '金色夕阳洒满天际，温暖光芒笼罩大地',
-    price: 150,
-    filename: 'golden-sunset.png',
-  },
-  {
-    id: 'cyber-city',
-    name: '霓虹都市',
-    description: '赛博朋克风格的未来都市，霓虹灯映照雨夜',
-    price: 300,
-    filename: 'cyber-city.png',
-  },
-  {
-    id: 'sakura-garden',
-    name: '樱之庭院',
-    description: '落英缤纷的日式庭院，花瓣随风飘散',
-    price: 250,
-    filename: 'sakura-garden.png',
-  },
-  {
-    id: 'aurora-sky',
-    name: '极光穹顶',
-    description: '北极光在夜空中舞动，绿紫交织的神秘光幕',
-    price: 350,
-    filename: 'aurora-sky.png',
-  },
-  {
-    id: 'ocean-depths',
-    name: '深海秘境',
-    description: '幽蓝深海中的奇幻世界，光线穿透海面',
-    price: 200,
-    filename: 'ocean-depths.png',
-  },
-]
+// 默认价格
+const DEFAULT_PRICE = 200
 
 const STORAGE_KEY_OWNED = 'naga-bg-owned'
 const STORAGE_KEY_ACTIVE = 'naga-bg-active'
@@ -71,6 +27,7 @@ function loadActive(): string | null {
   return localStorage.getItem(STORAGE_KEY_ACTIVE) || null
 }
 
+const backgroundList = ref<BackgroundItem[]>([])
 const ownedBackgrounds = ref<string[]>(loadOwned())
 const activeBackground = ref<string | null>(loadActive())
 
@@ -88,6 +45,16 @@ watch(activeBackground, (id) => {
 })
 
 export function useBackground() {
+  async function loadBackgrounds() {
+    const files: string[] = await window.electronAPI?.backgrounds?.scan() ?? []
+    backgroundList.value = files.map(filename => ({
+      id: filename,
+      name: filename.replace(/\.[^.]+$/, ''),
+      filename,
+      price: DEFAULT_PRICE,
+    }))
+  }
+
   function isOwned(id: string): boolean {
     return ownedBackgrounds.value.includes(id)
   }
@@ -110,10 +77,8 @@ export function useBackground() {
     activeBackground.value = null
   }
 
-  function getBackgroundUrl(id: string): string | null {
-    const item = BACKGROUND_CATALOG.find(b => b.id === id)
-    if (!item) return null
-    return `naga-bg://${item.filename}`
+  function getBackgroundUrl(id: string): string {
+    return `naga-bg://${id}`
   }
 
   function getActiveBackgroundUrl(): string | null {
@@ -122,6 +87,7 @@ export function useBackground() {
   }
 
   return {
+    backgroundList,
     ownedBackgrounds,
     activeBackground,
     isOwned,
@@ -131,6 +97,6 @@ export function useBackground() {
     resetToDefault,
     getBackgroundUrl,
     getActiveBackgroundUrl,
-    BACKGROUND_CATALOG,
+    loadBackgrounds,
   }
 }

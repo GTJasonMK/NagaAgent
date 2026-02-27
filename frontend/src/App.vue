@@ -80,6 +80,20 @@ watch(isFloatingMode, (floating) => {
   }
 })
 
+// 窗口模式变化时通知后端（ProactiveVision只在悬浮球模式运行）
+watch(floatingState, async (mode) => {
+  try {
+    await fetch('http://127.0.0.1:8001/proactive_vision/window_mode', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    })
+  }
+  catch {
+    // 忽略错误（后端可能未启动或不支持此功能）
+  }
+})
+
 // Live2D 居中/过渡控制
 const live2dTransform = ref('')
 const live2dTransformOrigin = ref('')
@@ -285,8 +299,8 @@ onUnmounted(() => {
     <TitleBar />
     <WindowResizeHandles :visible="showResizeHandles" :title-bar-height="isMac ? 28 : 32" />
     <Toast position="top-center" />
-    <div class="h-full" :class="{ sunflower: !hasCustomBg }" :style="{ paddingTop: titleBarPadding }">
-      <!-- 自定义背景层：覆盖向日葵边框 -->
+    <div class="h-full sunflower" :style="{ paddingTop: titleBarPadding }">
+      <!-- 自定义背景层：在向日葵边框之下 -->
       <div
         v-if="hasCustomBg"
         class="custom-bg-layer"
@@ -403,7 +417,7 @@ onUnmounted(() => {
 .custom-bg-layer {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: -2;
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;

@@ -3,7 +3,7 @@ import { useToast } from 'primevue/usetoast'
 import { computed, h, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { isNagaLoggedIn, nagaUser, refreshUserStats } from '@/composables/useAuth'
-import { BACKGROUND_CATALOG, useBackground } from '@/composables/useBackground'
+import { useBackground } from '@/composables/useBackground'
 import { CONFIG } from '@/utils/config'
 
 const router = useRouter()
@@ -87,6 +87,10 @@ function initDragScroll(container: HTMLElement) {
 onMounted(() => {
   if (albumSection.value) initDragScroll(albumSection.value)
   if (characterSectionRef.value) initDragScroll(characterSectionRef.value)
+  loadBackgrounds()
+  nextTick(() => {
+    if (skinGridRef.value) initVerticalDragScroll(skinGridRef.value)
+  })
 })
 
 // ── 角色注册 ──
@@ -172,17 +176,23 @@ function applyCustomCharacter() {
   CONFIG.value.system.active_character = ''
 }
 
-// 标签可见时实时计算宽度（v-show 隐藏时 offsetHeight 为 0）
+// 标签可见时执行初始化
 watch(activeTab, (tab) => {
   if (tab === 'memory-skin') {
     nextTick(computeAllCardWidths)
+  }
+  if (tab === 'skin') {
+    nextTick(() => {
+      if (skinGridRef.value) initVerticalDragScroll(skinGridRef.value)
+    })
   }
 })
 
 // ── 界面背景 ──
 const toast = useToast()
-const { ownedBackgrounds, activeBackground, isOwned, isActive, purchase, apply, resetToDefault, getBackgroundUrl } = useBackground()
+const { backgroundList, activeBackground, isOwned, isActive, purchase, apply, resetToDefault, getBackgroundUrl, loadBackgrounds } = useBackground()
 
+const skinGridRef = ref<HTMLElement | null>(null)
 const bgConfirmTarget = ref<string | null>(null)
 const bgPurchasing = ref(false)
 
@@ -193,14 +203,13 @@ function handleBgAction(bgId: string) {
     toast.add({ severity: 'success', summary: '已应用', detail: '背景已切换', life: 2000 })
     return
   }
-  // 打开确认兑换
   bgConfirmTarget.value = bgId
 }
 
 async function confirmPurchase() {
   const bgId = bgConfirmTarget.value
   if (!bgId || bgPurchasing.value) return
-  const bg = BACKGROUND_CATALOG.find(b => b.id === bgId)
+  const bg = backgroundList.value.find(b => b.id === bgId)
   if (!bg) return
 
   if (!isNagaLoggedIn.value) {
@@ -218,7 +227,6 @@ async function confirmPurchase() {
 
   bgPurchasing.value = true
   try {
-    // 扣除积分（本地扣减 + 刷新服务端数据）
     purchase(bgId)
     if (nagaUser.value) {
       nagaUser.value.points = userPoints - bg.price
@@ -244,8 +252,48 @@ function handleResetBg() {
 
 const confirmBgItem = computed(() => {
   if (!bgConfirmTarget.value) return null
-  return BACKGROUND_CATALOG.find(b => b.id === bgConfirmTarget.value) ?? null
+  return backgroundList.value.find(b => b.id === bgConfirmTarget.value) ?? null
 })
+
+// 背景网格垂直拖动滚动
+function initVerticalDragScroll(container: HTMLElement) {
+  let wasSkinDragging = false
+
+  container.addEventListener('mousedown', (e: MouseEvent) => {
+    let startY = e.clientY
+    let startScrollTop = container.scrollTop
+    let moved = false
+
+    container.style.cursor = 'grabbing'
+    document.body.style.cursor = 'grabbing'
+
+    function onMove(ev: MouseEvent) {
+      const dy = ev.clientY - startY
+      if (Math.abs(dy) > DRAG_THRESHOLD) moved = true
+      container.scrollTop = startScrollTop - dy
+    }
+
+    function onUp() {
+      wasSkinDragging = moved
+      container.style.cursor = ''
+      document.body.style.cursor = ''
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      setTimeout(() => { wasSkinDragging = false }, 0)
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  })
+
+  // 拦截点击，拖动中不触发 handleBgAction
+  container.addEventListener('click', (e: MouseEvent) => {
+    if (wasSkinDragging) {
+      e.stopPropagation()
+      e.preventDefault()
+    }
+  }, true)
+}
 </script>
 
 <template>
@@ -438,17 +486,17 @@ const confirmBgItem = computed(() => {
           </button>
         </div>
 
-        <!-- 背景卡片网格 -->
-        <div class="skin-grid">
+        <!-- 背景卡片网格（3列，垂直滚动 + 拖动） -->
+        <div ref="skinGridRef" class="skin-grid">
           <div
-            v-for="bg in BACKGROUND_CATALOG"
+            v-for="bg in backgroundList"
             :key="bg.id"
             class="skin-card"
             :class="{ active: isActive(bg.id), owned: isOwned(bg.id) }"
             @click="handleBgAction(bg.id)"
           >
             <div class="skin-thumb">
-              <img :src="getBackgroundUrl(bg.id) ?? ''" :alt="bg.name" class="skin-thumb-img" @error="($event.target as HTMLImageElement).style.display='none'">
+              <img :src="getBackgroundUrl(bg.id)" :alt="bg.name" class="skin-thumb-img" @error="($event.target as HTMLImageElement).style.display='none'">
               <div class="skin-thumb-placeholder">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -462,24 +510,31 @@ const confirmBgItem = computed(() => {
             </div>
             <div class="skin-info">
               <div class="skin-name">{{ bg.name }}</div>
-              <div class="skin-desc">{{ bg.description }}</div>
+              <div class="skin-price-row">
+                <template v-if="isActive(bg.id)">
+                  <span class="skin-status-text active-text">当前背景</span>
+                </template>
+                <template v-else-if="isOwned(bg.id)">
+                  <span class="skin-status-text owned-text">已拥有</span>
+                </template>
+                <template v-else>
+                  <span class="skin-price">
+                    <span class="price-icon">◆</span>
+                    {{ bg.price }}
+                  </span>
+                </template>
+              </div>
             </div>
-            <div class="skin-footer">
-              <template v-if="isActive(bg.id)">
-                <span class="skin-status-text active-text">当前背景</span>
-              </template>
-              <template v-else-if="isOwned(bg.id)">
-                <button type="button" class="skin-apply-btn" @click.stop="apply(bg.id)">
-                  应用
-                </button>
-              </template>
-              <template v-else>
-                <span class="skin-price">
-                  <span class="price-icon">◆</span>
-                  {{ bg.price }}
-                </span>
-              </template>
-            </div>
+          </div>
+
+          <!-- 空状态 -->
+          <div v-if="backgroundList.length === 0" class="skin-empty">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+            <span>将图片放入 premium-assets/backgrounds 文件夹</span>
           </div>
         </div>
 
@@ -491,7 +546,6 @@ const confirmBgItem = computed(() => {
                 <h3 class="bg-confirm-title">确认兑换</h3>
                 <div v-if="confirmBgItem" class="bg-confirm-body">
                   <div class="bg-confirm-name">{{ confirmBgItem.name }}</div>
-                  <div class="bg-confirm-desc">{{ confirmBgItem.description }}</div>
                   <div class="bg-confirm-price">
                     <span class="price-icon">◆</span>
                     <span class="bg-confirm-price-num">{{ confirmBgItem.price }}</span>
@@ -1207,27 +1261,11 @@ const confirmBgItem = computed(() => {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.skin-balance {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.balance-icon {
-  font-size: 12px;
-  color: rgba(212, 175, 55, 0.9);
-}
-
-.balance-num {
-  font-size: 16px;
-  font-weight: 700;
-  color: rgba(248, 250, 252, 0.9);
-  font-variant-numeric: tabular-nums;
-}
-
-.balance-label {
-  font-size: 11px;
-  color: rgba(148, 163, 184, 0.5);
+.skin-toolbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.7);
+  letter-spacing: 0.04em;
 }
 
 .skin-reset-btn {
@@ -1259,24 +1297,31 @@ const confirmBgItem = computed(() => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 16px;
+  padding: 16px 20px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
   align-content: start;
+  cursor: grab;
+  user-select: none;
 }
 
 .skin-grid::-webkit-scrollbar {
-  width: 4px;
+  width: 5px;
 }
 
 .skin-grid::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 3px;
 }
 
 .skin-grid::-webkit-scrollbar-thumb {
-  background: rgba(212, 175, 55, 0.25);
-  border-radius: 2px;
+  background: rgba(212, 175, 55, 0.3);
+  border-radius: 3px;
+}
+
+.skin-grid::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.5);
 }
 
 .skin-card {
@@ -1299,10 +1344,6 @@ const confirmBgItem = computed(() => {
 .skin-card.active {
   border-color: rgba(212, 175, 55, 0.6);
   box-shadow: 0 0 16px rgba(212, 175, 55, 0.15);
-}
-
-.skin-card.owned {
-  border-color: rgba(148, 163, 184, 0.2);
 }
 
 .skin-thumb {
@@ -1346,14 +1387,8 @@ const confirmBgItem = computed(() => {
   color: #1a1206;
 }
 
-.owned-badge {
-  background: rgba(255, 255, 255, 0.15);
-  color: rgba(248, 250, 252, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
 .skin-info {
-  padding: 8px 10px 4px;
+  padding: 8px 10px;
 }
 
 .skin-name {
@@ -1362,29 +1397,19 @@ const confirmBgItem = computed(() => {
   color: rgba(248, 250, 252, 0.9);
   font-family: 'Noto Serif SC', serif;
   letter-spacing: 0.03em;
-}
-
-.skin-desc {
-  font-size: 10px;
-  color: rgba(148, 163, 184, 0.55);
-  margin-top: 2px;
-  line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.skin-footer {
-  padding: 6px 10px 8px;
+.skin-price-row {
+  margin-top: 2px;
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-height: 28px;
 }
 
 .skin-status-text {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.03em;
 }
@@ -1393,34 +1418,67 @@ const confirmBgItem = computed(() => {
   color: rgba(212, 175, 55, 0.85);
 }
 
-.skin-apply-btn {
-  padding: 3px 16px;
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(212, 175, 55, 0.95);
-  background: transparent;
-  border: 1px solid rgba(212, 175, 55, 0.4);
-  border-radius: 5px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.skin-apply-btn:hover {
-  background: rgba(212, 175, 55, 0.12);
-  border-color: rgba(212, 175, 55, 0.7);
+.owned-text {
+  color: rgba(148, 163, 184, 0.5);
 }
 
 .skin-price {
   display: flex;
   align-items: center;
   gap: 3px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: rgba(234, 179, 8, 0.9);
 }
 
 .skin-price .price-icon {
-  font-size: 10px;
+  font-size: 9px;
+}
+
+.skin-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 20px;
+  color: rgba(148, 163, 184, 0.35);
+  font-size: 12px;
+  text-align: center;
+}
+
+.skin-balance {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.balance-icon {
+  font-size: 12px;
+  color: rgba(212, 175, 55, 0.9);
+}
+
+.balance-num {
+  font-size: 16px;
+  font-weight: 700;
+  color: rgba(248, 250, 252, 0.9);
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-label {
+  font-size: 11px;
+  color: rgba(148, 163, 184, 0.5);
+}
+
+.skin-card.owned {
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.owned-badge {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(248, 250, 252, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 /* ── 兑换确认弹窗 ── */
@@ -1462,13 +1520,6 @@ const confirmBgItem = computed(() => {
   font-weight: 600;
   color: rgba(212, 175, 55, 0.95);
   font-family: 'Noto Serif SC', serif;
-}
-
-.bg-confirm-desc {
-  font-size: 11px;
-  color: rgba(148, 163, 184, 0.6);
-  margin-top: 4px;
-  line-height: 1.5;
 }
 
 .bg-confirm-price {

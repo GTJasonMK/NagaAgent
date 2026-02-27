@@ -33,6 +33,10 @@ export interface FloatingAPI {
   onWindowBlur: (callback: () => void) => () => void
 }
 
+export interface BackgroundsAPI {
+  scan: () => Promise<string[]>
+}
+
 export interface AutoLaunchAPI {
   get: () => Promise<boolean>
   set: (enabled: boolean) => Promise<void>
@@ -55,6 +59,7 @@ export interface ElectronAPI {
   floating: FloatingAPI
   capture: CaptureAPI
   backend: BackendAPI
+  backgrounds: BackgroundsAPI
   autoLaunch: AutoLaunchAPI
   platform: string
 }

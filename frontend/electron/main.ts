@@ -1,3 +1,4 @@
+import { readdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -251,6 +252,18 @@ app.whenReady().then(() => {
   ipcMain.handle('capture:openScreenSettings', async () => {
     if (process.platform === 'darwin') {
       await shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture')
+    }
+  })
+
+  // 扫描背景图片文件夹
+  ipcMain.handle('backgrounds:scan', async () => {
+    try {
+      const files = await readdir(BACKGROUNDS_DIR)
+      const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif']
+      return files.filter(f => imageExts.some(ext => f.toLowerCase().endsWith(ext)))
+    }
+    catch {
+      return []
     }
   })
 
