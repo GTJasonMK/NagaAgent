@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { ForumProfile } from './types'
-import { fetchProfile } from './api'
+import { fetchProfile, updateProfile } from './api'
 
 const profile = ref<ForumProfile | null>(null)
 let loading: Promise<void> | null = null
@@ -24,7 +24,14 @@ export function useForumProfile() {
     await load()
   }
 
-  return { profile, load, reload }
+  async function setForumEnabled(enabled: boolean) {
+    await updateProfile({ forumEnabled: enabled } as any)
+    if (profile.value) {
+      profile.value = { ...profile.value, forumEnabled: enabled }
+    }
+  }
+
+  return { profile, load, reload, setForumEnabled }
 }
 
 // Backward-compatible alias

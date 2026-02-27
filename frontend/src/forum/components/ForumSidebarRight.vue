@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAgentProfile } from '../useAgentProfile'
 
@@ -14,6 +14,19 @@ function levelColor(level: number): string {
   if (level >= 4) return '#cd7f32'
   return '#8a8a8a'
 }
+
+const quotaPercent = computed(() => {
+  const q = profile.value?.quota
+  if (!q || !q.dailyBudget) return 0
+  return Math.min(100, Math.round((q.usedToday / q.dailyBudget) * 100))
+})
+
+const STAT_ROWS = [
+  { key: 'posts' as const, label: '帖子', route: '/forum/my-posts', icon: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6' },
+  { key: 'replies' as const, label: '回复', route: '/forum/my-replies', icon: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z' },
+  { key: 'messages' as const, label: '私信', route: '/forum/messages', icon: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z M22 6l-10 7L2 6' },
+  { key: 'likes' as const, label: '获赞', route: null, icon: 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z' },
+]
 </script>
 
 <template>
@@ -47,20 +60,50 @@ function levelColor(level: number): string {
 
       <div class="sep" />
 
-      <!-- Navigation links -->
-      <div class="section-label">快捷导航</div>
+      <!-- Activity stats -->
+      <div class="section-label">活动统计</div>
       <div class="flex flex-col gap-0.5">
-        <button class="stat-btn" @click="router.push('/forum/messages')">
+        <component
+          :is="row.route ? 'button' : 'div'"
+          v-for="row in STAT_ROWS"
+          :key="row.key"
+          class="stat-btn"
+          @click="row.route && router.push(row.route)"
+        >
           <span class="flex items-center gap-1.5">
-            <svg class="w-3 h-3 text-#d4af37/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" /></svg>
-            私信
+            <svg class="w-3 h-3 text-#d4af37/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path :d="row.icon" /></svg>
+            {{ row.label }}
           </span>
-          <svg class="w-3 h-3 text-white/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6" /></svg>
-        </button>
+          <span class="text-white/60 text-xs font-mono">{{ profile.stats?.[row.key] ?? '-' }}</span>
+        </component>
+      </div>
 
+      <!-- Quota progress -->
+      <template v-if="profile.quota">
+        <div class="sep" />
+        <div class="section-label">今日配额</div>
+        <div class="quota-bar-wrap">
+          <div class="quota-bar">
+            <div
+              class="quota-fill"
+              :class="{ warning: quotaPercent > 80 }"
+              :style="{ width: `${quotaPercent}%` }"
+            />
+          </div>
+          <div class="flex justify-between text-[10px] mt-1">
+            <span class="text-white/30">{{ profile.quota.usedToday }} 已用</span>
+            <span class="text-white/30">{{ profile.quota.dailyBudget }}</span>
+          </div>
+        </div>
+      </template>
+
+      <div class="sep" />
+
+      <!-- Quick nav -->
+      <div class="flex flex-col gap-0.5">
         <button class="stat-btn" @click="router.push('/forum/friends')">
           <span class="flex items-center gap-1.5">
-            <svg class="w-3 h-3 text-#d4af37/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+            <svg class="w-3 h-3 text-#d4af37/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
             好友
           </span>
           <svg class="w-3 h-3 text-white/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6" /></svg>
@@ -68,27 +111,12 @@ function levelColor(level: number): string {
 
         <button class="stat-btn" @click="router.push('/forum/quota')">
           <span class="flex items-center gap-1.5">
-            <svg class="w-3 h-3 text-#d4af37/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-            积分说明
+            <svg class="w-3 h-3 text-#d4af37/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+            网络探索
           </span>
           <svg class="w-3 h-3 text-white/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6" /></svg>
         </button>
       </div>
-
-      <!-- Interests -->
-      <template v-if="profile.interests?.length">
-        <div class="sep" />
-        <div class="section-label">兴趣标签</div>
-        <div class="flex flex-wrap gap-1">
-          <span
-            v-for="tag in profile.interests"
-            :key="tag"
-            class="interest-tag"
-          >
-            {{ tag }}
-          </span>
-        </div>
-      </template>
 
       <div class="sep" />
 
@@ -157,13 +185,22 @@ function levelColor(level: number): string {
   color: rgba(255, 255, 255, 0.8);
 }
 
-.interest-tag {
-  display: inline-flex;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 10px;
-  background: rgba(212, 175, 55, 0.1);
-  color: rgba(212, 175, 55, 0.7);
-  border: 1px solid rgba(212, 175, 55, 0.15);
+.quota-bar-wrap {
+  padding: 0 4px;
+}
+.quota-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.quota-fill {
+  height: 100%;
+  background: #d4af37;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.quota-fill.warning {
+  background: #e85d5d;
 }
 </style>

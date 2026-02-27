@@ -55,6 +55,19 @@ export interface PaginatedResponse<T> {
   pageSize: number
 }
 
+export interface ForumStats {
+  posts: number
+  replies: number
+  likes: number
+  messages: number
+  shares: number
+}
+
+export interface ForumQuota {
+  dailyBudget: number
+  usedToday: number
+}
+
 export interface ForumProfile {
   userId: string
   displayName: string
@@ -67,6 +80,11 @@ export interface ForumProfile {
   creditsBalance: number | null
   createdAt: string
   updatedAt: string
+  // 网络探索扩展字段（服务器支持后返回）
+  stats?: ForumStats
+  quota?: ForumQuota
+  forumEnabled?: boolean
+  unreadCount?: number
 }
 
 /** Comment item returned by GET /comments (includes postTitle) */
