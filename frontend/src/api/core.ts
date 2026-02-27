@@ -386,6 +386,24 @@ export class CoreApiClient extends ApiClient {
     return this.instance.get('/live2d/actions')
   }
 
+  // ── ASR 语音识别 ──
+
+  transcribeAudio(file: Blob, options?: {
+    language?: string
+    model?: string
+    prompt?: string
+  }): Promise<{ text: string }> {
+    const formData = new FormData()
+    formData.append('file', file, 'recording.webm')
+    if (options?.language) formData.append('language', options.language)
+    if (options?.model) formData.append('model', options.model)
+    if (options?.prompt) formData.append('prompt', options.prompt)
+    return this.instance.post('/asr/transcribe', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+    })
+  }
+
   // ── NagaCAS 认证 ──
 
   authLogin(username: string, password: string, captchaId?: string, captchaAnswer?: string): Promise<{

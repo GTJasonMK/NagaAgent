@@ -644,6 +644,61 @@ async def tts_speech_proxy(request: Request):
         raise HTTPException(status_code=502, detail=f"TTS proxy error: {str(e)}")
 
 
+@app.post("/asr/transcribe")
+async def asr_transcribe_proxy(request: Request):
+    """代理前端 ASR 请求到 NagaBusiness /v1/audio/transcriptions"""
+    import httpx
+    from fastapi.responses import JSONResponse
+
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" not in content_type:
+        raise HTTPException(status_code=400, detail="Content-Type must be multipart/form-data")
+
+    # 优先从请求头获取 token，其次使用后端已同步的认证状态
+    auth_header = request.headers.get("authorization", "")
+    token = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else ""
+    if not token and naga_auth.is_authenticated():
+        token = naga_auth.get_access_token()
+    if not token:
+        raise HTTPException(status_code=401, detail="未登录，ASR 服务需要登录后使用")
+    upstream_auth = f"Bearer {token}"
+
+    # 解析 multipart 表单
+    form = await request.form()
+    audio_file = form.get("file")
+    if not audio_file:
+        raise HTTPException(status_code=400, detail="缺少 file 字段")
+
+    # 构建转发请求
+    asr_url = naga_auth.NAGA_MODEL_URL + "/audio/transcriptions"
+    files = {"file": (audio_file.filename or "recording.webm", await audio_file.read(), audio_file.content_type or "audio/webm")}
+    data = {}
+    for key in ("model", "language", "prompt", "response_format", "temperature"):
+        val = form.get(key)
+        if val is not None:
+            data[key] = val
+    if "model" not in data:
+        data["model"] = "default"
+    if "language" not in data:
+        data["language"] = "zh"
+
+    try:
+        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
+            resp = await client.post(asr_url, files=files, data=data, headers={"Authorization": upstream_auth})
+        if resp.status_code != 200:
+            detail = resp.text[:200] if resp.text else "ASR service error"
+            logger.error(f"ASR 代理失败: {resp.status_code} url={asr_url} detail={detail}")
+            raise HTTPException(status_code=resp.status_code, detail=detail)
+        return JSONResponse(content=resp.json())
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="ASR service timeout")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"ASR 代理异常: {e}")
+        raise HTTPException(status_code=502, detail=f"ASR proxy error: {str(e)}")
+
+
 # API路由
 @app.get("/", response_model=Dict[str, str])
 async def root():
