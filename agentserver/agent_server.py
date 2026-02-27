@@ -119,6 +119,17 @@ def _is_port_in_use(port: int) -> bool:
         return False
 
 
+async def _delayed_health_check():
+    """延迟健康检查（等待所有服务启动）"""
+    await asyncio.sleep(3)  # 等待3秒让所有服务就绪
+
+    try:
+        from system.health_check import perform_startup_health_check
+        await perform_startup_health_check()
+    except Exception as e:
+        logger.error(f"启动时健康检查失败: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI应用生命周期"""
@@ -271,7 +282,34 @@ async def lifespan(app: FastAPI):
         add_config_listener(_on_config_changed)
         logger.debug("已注册 OpenClaw 配置变更监听器")
 
+        # 初始化主动视觉系统
+        try:
+            from agentserver.proactive_vision import (
+                load_proactive_config,
+                create_proactive_scheduler,
+                create_proactive_analyzer,
+                create_proactive_trigger,
+            )
+
+            pv_config = load_proactive_config()
+            create_proactive_trigger()
+            create_proactive_analyzer(pv_config)
+            Modules.proactive_scheduler = create_proactive_scheduler(pv_config)
+
+            if pv_config.enabled:
+                await Modules.proactive_scheduler.start()
+                logger.info("[ProactiveVision] 主动视觉系统已启动")
+            else:
+                logger.info("[ProactiveVision] 主动视觉系统未启用")
+        except Exception as e:
+            logger.warning(f"[ProactiveVision] 初始化失败（可选功能）: {e}")
+            Modules.proactive_scheduler = None
+
         logger.info("NagaAgent服务初始化完成")
+
+        # 执行启动时健康检查（延迟2秒等待所有服务就绪）
+        asyncio.create_task(_delayed_health_check())
+
     except Exception as e:
         logger.error(f"服务初始化失败: {e}")
         raise
@@ -281,6 +319,11 @@ async def lifespan(app: FastAPI):
 
     # shutdown
     try:
+        # 停止主动视觉系统
+        if Modules.proactive_scheduler:
+            await Modules.proactive_scheduler.stop()
+            logger.info("[ProactiveVision] 主动视觉系统已停止")
+
         # 停止 Gateway 进程（内嵌模式）
         embedded_runtime = get_embedded_runtime()
         if embedded_runtime.gateway_running:
@@ -299,6 +342,7 @@ class Modules:
 
     task_scheduler = None
     openclaw_client = None
+    proactive_scheduler = None  # 主动视觉调度器
 
 
 def _now_iso() -> str:
@@ -457,7 +501,37 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": _now_iso(),
-        "modules": {"openclaw": Modules.openclaw_client is not None},
+        "modules": {
+            "openclaw": Modules.openclaw_client is not None,
+            "proactive_vision": Modules.proactive_scheduler is not None,
+        },
+    }
+
+
+@app.get("/health/full")
+async def full_health_check():
+    """完整健康检查（包括所有服务）"""
+    from system.health_check import get_health_checker
+
+    checker = get_health_checker()
+    results = await checker.check_all()
+    summary = checker.get_summary(results)
+
+    # 转换为可序列化格式
+    results_dict = {}
+    for service_name, result in results.items():
+        results_dict[service_name] = {
+            "status": result.status.value,
+            "message": result.message,
+            "checks": result.checks,
+            "details": result.details,
+            "latency_ms": result.latency_ms,
+        }
+
+    return {
+        "summary": summary,
+        "services": results_dict,
+        "timestamp": _now_iso(),
     }
 
 
@@ -1714,6 +1788,290 @@ async def _run_travel_session(session_id: str):
             save_session(session)
         except Exception:
             pass
+
+
+# ========== Proactive Vision API ==========
+
+
+@app.get("/proactive_vision/config")
+async def get_proactive_vision_config():
+    """获取主动视觉系统配置"""
+    try:
+        from agentserver.proactive_vision import load_proactive_config
+
+        config = load_proactive_config()
+        return {"success": True, "config": config.model_dump()}
+    except Exception as e:
+        logger.error(f"获取 ProactiveVision 配置失败: {e}")
+        raise HTTPException(500, f"获取失败: {e}")
+
+
+@app.post("/proactive_vision/config")
+async def update_proactive_vision_config(payload: Dict[str, Any]):
+    """更新主动视觉系统配置"""
+    try:
+        from agentserver.proactive_vision import (
+            load_proactive_config,
+            save_proactive_config,
+            ProactiveVisionConfig,
+            replace_proactive_scheduler_async,
+            create_proactive_analyzer,
+        )
+
+        # 加载当前配置并备份到内存（用于回滚）
+        old_config_backup = load_proactive_config()
+
+        # 更新字段
+        config_dict = old_config_backup.model_dump()
+        config_dict.update(payload)
+
+        # 创建新配置对象并验证
+        new_config = ProactiveVisionConfig(**config_dict)
+
+        # 先保存配置，确保配置有效
+        if not save_proactive_config(new_config):
+            raise HTTPException(500, "配置保存失败")
+
+        # 如果调度器已启动，需要重启以应用新配置
+        if Modules.proactive_scheduler:
+            was_running = Modules.proactive_scheduler._running
+
+            try:
+                # 使用线程安全的异步替换（会自动停止旧调度器）
+                create_proactive_analyzer(new_config)
+                Modules.proactive_scheduler = await replace_proactive_scheduler_async(new_config)
+
+                # 如果配置启用且之前在运行，则启动新调度器
+                if new_config.enabled and was_running:
+                    await Modules.proactive_scheduler.start()
+                elif new_config.enabled and not was_running:
+                    # 如果配置启用但之前未运行，也启动
+                    await Modules.proactive_scheduler.start()
+
+            except Exception as e:
+                logger.error(f"[ProactiveVision] 应用新配置失败: {e}")
+                # 回滚：恢复旧配置（从内存备份）
+                try:
+                    save_proactive_config(old_config_backup)  # 恢复磁盘配置
+                    create_proactive_analyzer(old_config_backup)
+                    Modules.proactive_scheduler = await replace_proactive_scheduler_async(old_config_backup)
+                    if was_running and old_config_backup.enabled:
+                        await Modules.proactive_scheduler.start()
+                    logger.info("[ProactiveVision] 已成功回滚到旧配置")
+                except Exception as rollback_error:
+                    logger.error(f"[ProactiveVision] 回滚失败: {rollback_error}")
+                raise HTTPException(500, f"应用新配置失败，已尝试回滚: {e}")
+
+        return {"success": True, "message": "配置已更新", "config": new_config.model_dump()}
+    except Exception as e:
+        logger.error(f"更新 ProactiveVision 配置失败: {e}")
+        raise HTTPException(500, f"更新失败: {e}")
+
+
+@app.post("/proactive_vision/enable")
+async def enable_proactive_vision(payload: Dict[str, Any]):
+    """启用/禁用主动视觉系统"""
+    try:
+        enabled = payload.get("enabled", True)
+
+        from agentserver.proactive_vision import load_proactive_config, save_proactive_config
+
+        config = load_proactive_config()
+        config.enabled = enabled
+
+        if save_proactive_config(config):
+            if Modules.proactive_scheduler:
+                if enabled:
+                    await Modules.proactive_scheduler.start()
+                else:
+                    await Modules.proactive_scheduler.stop()
+
+            status = "已启用" if enabled else "已禁用"
+            return {"success": True, "message": f"主动视觉系统{status}", "enabled": enabled}
+        else:
+            raise HTTPException(500, "配置保存失败")
+    except Exception as e:
+        logger.error(f"切换 ProactiveVision 状态失败: {e}")
+        raise HTTPException(500, f"操作失败: {e}")
+
+
+@app.get("/proactive_vision/status")
+async def get_proactive_vision_status():
+    """获取主动视觉系统运行状态"""
+    try:
+        if not Modules.proactive_scheduler:
+            return {
+                "success": True,
+                "running": False,
+                "enabled": False,
+                "message": "调度器未初始化",
+            }
+
+        from agentserver.proactive_vision import load_proactive_config, get_proactive_analyzer
+
+        config = load_proactive_config()
+
+        # 获取性能统计
+        performance_stats = {}
+        analyzer = get_proactive_analyzer()
+        if analyzer:
+            performance_stats = analyzer.get_performance_stats()
+
+        return {
+            "success": True,
+            "running": Modules.proactive_scheduler._running,
+            "enabled": config.enabled,
+            "last_check": Modules.proactive_scheduler._last_check_time,
+            "last_activity": Modules.proactive_scheduler._last_user_activity_time,
+            "check_interval": config.check_interval_seconds,
+            "performance": performance_stats,
+        }
+    except Exception as e:
+        logger.error(f"获取 ProactiveVision 状态失败: {e}")
+        raise HTTPException(500, f"获取失败: {e}")
+
+
+@app.post("/proactive_vision/trigger/test")
+async def test_proactive_vision_trigger(payload: Dict[str, Any]):
+    """测试触发规则（忽略冷却时间）"""
+    try:
+        rule_id = payload.get("rule_id")
+        if not rule_id:
+            raise HTTPException(400, "rule_id 不能为空")
+
+        from agentserver.proactive_vision import load_proactive_config, get_proactive_trigger
+
+        config = load_proactive_config()
+        rule = None
+        for r in config.trigger_rules:
+            if r.rule_id == rule_id:
+                rule = r
+                break
+
+        if not rule:
+            raise HTTPException(404, f"规则不存在: {rule_id}")
+
+        trigger = get_proactive_trigger()
+        if not trigger:
+            raise HTTPException(503, "触发器未初始化")
+
+        # 重置冷却时间以允许立即触发
+        trigger.reset_cooldown(rule_id)
+
+        # 发送测试消息
+        test_context = "这是一条测试消息"
+        await trigger.send_proactive_message(rule, test_context)
+
+        return {"success": True, "message": f"测试触发规则: {rule.name}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"测试 ProactiveVision 触发失败: {e}")
+        raise HTTPException(500, f"测试失败: {e}")
+
+
+@app.post("/proactive_vision/activity")
+async def update_user_activity():
+    """更新用户活动时间（由前端定期调用）"""
+    try:
+        if Modules.proactive_scheduler:
+            Modules.proactive_scheduler.update_user_activity()
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"更新用户活动时间失败: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/proactive_vision/window_mode")
+async def set_proactive_vision_window_mode(payload: Dict[str, Any]):
+    """设置窗口模式（由前端在模式切换时调用）
+
+    ProactiveVision只在悬浮球模式（ball/compact/full）下运行，classic模式时暂停
+
+    Args:
+        payload: {"mode": "classic" | "ball" | "compact" | "full"}
+    """
+    try:
+        mode = payload.get("mode", "classic")
+
+        if mode not in ("classic", "ball", "compact", "full"):
+            return {"success": False, "error": f"无效的窗口模式: {mode}"}
+
+        if Modules.proactive_scheduler:
+            Modules.proactive_scheduler.set_window_mode(mode)
+
+        return {
+            "success": True,
+            "mode": mode,
+            "active": mode in ("ball", "compact", "full"),
+        }
+    except Exception as e:
+        logger.error(f"设置窗口模式失败: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/proactive_vision/reset_timer")
+async def reset_proactive_vision_timer(payload: Dict[str, Any]):
+    """重置ProactiveVision检查计时器（由MCP Server调用）
+
+    当AI主动调用screen_vision MCP时，MCP Server会调用此API重置计时器，
+    避免ProactiveVision短时间内重复分析同一屏幕。
+
+    Args:
+        payload: {"reason": "mcp_call_screen_vision"}
+    """
+    try:
+        reason = payload.get("reason", "external_trigger")
+
+        if Modules.proactive_scheduler:
+            Modules.proactive_scheduler.reset_check_timer(reason)
+            return {
+                "success": True,
+                "message": "计时器已重置",
+                "reason": reason,
+            }
+        else:
+            return {
+                "success": False,
+                "error": "ProactiveVision调度器未初始化",
+            }
+    except Exception as e:
+        logger.error(f"重置ProactiveVision计时器失败: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/proactive_vision/metrics")
+async def get_proactive_vision_metrics():
+    """获取ProactiveVision性能指标"""
+    try:
+        from agentserver.proactive_vision.metrics import get_metrics
+
+        metrics = get_metrics()
+        all_metrics = metrics.get_all_metrics()
+
+        return {
+            "success": True,
+            "metrics": all_metrics,
+        }
+    except Exception as e:
+        logger.error(f"获取 ProactiveVision metrics 失败: {e}")
+        raise HTTPException(500, f"获取失败: {e}")
+
+
+@app.get("/proactive_vision/metrics/prometheus")
+async def get_proactive_vision_metrics_prometheus():
+    """获取Prometheus格式的性能指标"""
+    try:
+        from agentserver.proactive_vision.metrics import get_metrics
+        from fastapi.responses import PlainTextResponse
+
+        metrics = get_metrics()
+        prometheus_text = metrics.get_prometheus_format()
+
+        return PlainTextResponse(content=prometheus_text, media_type="text/plain; version=0.0.4")
+    except Exception as e:
+        logger.error(f"获取 Prometheus metrics 失败: {e}")
+        raise HTTPException(500, f"获取失败: {e}")
 
 
 if __name__ == "__main__":

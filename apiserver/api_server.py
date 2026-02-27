@@ -27,7 +27,7 @@ logging.getLogger("httpcore.connection").setLevel(logging.WARNING)
 # 创建logger实例
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
@@ -715,7 +715,38 @@ async def root():
 @app.get("/health")
 async def health_check():
     """健康检查"""
-    return {"status": "healthy", "agent_ready": True, "timestamp": str(asyncio.get_event_loop().time())}
+    from apiserver.websocket_manager import get_websocket_manager
+
+    ws_manager = get_websocket_manager()
+    ws_stats = ws_manager.get_stats()
+
+    return {
+        "status": "healthy",
+        "agent_ready": True,
+        "websocket_connections": ws_stats["total_connections"],
+        "timestamp": str(asyncio.get_event_loop().time()),
+    }
+
+
+@app.get("/health/full")
+async def full_health_check():
+    """完整健康检查（调用Agent Server的全面检查）"""
+    import httpx
+    from system.config import get_server_port
+
+    agent_port = get_server_port("agent_server")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"http://127.0.0.1:{agent_port}/health/full")
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                raise HTTPException(resp.status_code, "Agent Server健康检查失败")
+    except httpx.ConnectError:
+        raise HTTPException(503, "无法连接到Agent Server")
+    except Exception as e:
+        raise HTTPException(500, f"健康检查失败: {e}")
 
 
 # ============ OpenClaw 任务状态查询（对外暴露在 API Server） ============
@@ -949,6 +980,9 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=400, detail="消息内容不能为空")
 
     try:
+        # 更新ProactiveVision的用户活动时间
+        asyncio.create_task(_update_proactive_activity_silent())
+
         # 技能调度前缀：让 LLM 明确知道当前处于技能模式
         user_message = request.message
         if request.skill:
@@ -2561,3 +2595,156 @@ async def forum_mark_notification_read(notif_id: str, request: Request):
 @app.post("/forum/api/notifications/read-all")
 async def forum_mark_all_notifications_read(request: Request):
     return await _call_nagabusiness("POST", "/v1/forum/notifications/read-all", request)
+
+
+# ========== Proactive Vision Integration ==========
+
+
+@app.post("/proactive_message")
+async def receive_proactive_message(payload: Dict[str, Any]):
+    """
+    接收来自ProactiveVision的主动消息
+
+    请求体:
+    - message: 主动消息内容
+    - source: 消息来源（如"ProactiveVision:游戏关卡提醒"）
+    - timestamp: 触发时间戳
+
+    Returns:
+        处理状态
+    """
+    try:
+        message = payload.get("message", "")
+        source = payload.get("source", "ProactiveVision")
+        timestamp = payload.get("timestamp", time.time())
+
+        if not message:
+            raise HTTPException(400, "message 不能为空")
+
+        logger.info(f"[ProactiveMessage] 收到主动消息: {message[:50]}... (来源: {source})")
+
+        # 创建一个特殊的会话ID用于主动消息
+        proactive_session_id = f"proactive_{int(timestamp)}"
+
+        # 构建通知数据
+        notification_data = {
+            "type": "proactive_message",
+            "content": message,
+            "source": source,
+            "timestamp": timestamp,
+            "session_id": proactive_session_id,
+        }
+
+        # TODO: 通过WebSocket或SSE推送到前端
+        # 目前暂存到消息管理器，前端可通过轮询获取
+        message_manager.add_message(
+            session_id=proactive_session_id,
+            role="assistant",
+            content=f"[主动提醒 - {source}]\n{message}",
+        )
+
+        logger.info(f"[ProactiveMessage] 主动消息已处理: {proactive_session_id}")
+
+        return {
+            "status": "ok",
+            "message": "主动消息已接收",
+            "session_id": proactive_session_id,
+            "data": notification_data,
+        }
+
+    except Exception as e:
+        logger.error(f"[ProactiveMessage] 处理主动消息失败: {e}", exc_info=True)
+        raise HTTPException(500, f"处理失败: {e}")
+
+
+async def _update_proactive_activity_silent():
+    """异步更新用户活动时间（静默失败，不影响主流程）"""
+    try:
+        import httpx
+        from system.config import get_server_port
+
+        agent_port = get_server_port("agent_server")
+        activity_url = f"http://127.0.0.1:{agent_port}/proactive_vision/activity"
+
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            await client.post(activity_url)
+    except Exception:
+        pass  # 静默失败，不影响主对话流程
+
+
+# ========== WebSocket 实时通信 ==========
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, session_id: str = None):
+    """
+    WebSocket连接端点
+
+    参数:
+    - session_id: 可选，绑定到特定会话
+
+    用法:
+    - 前端: const ws = new WebSocket('ws://localhost:8000/ws?session_id=xxx')
+    - 接收主动消息、实时通知等
+    """
+    from apiserver.websocket_manager import get_websocket_manager
+
+    ws_manager = get_websocket_manager()
+    await ws_manager.connect(websocket, session_id)
+
+    try:
+        while True:
+            # 接收客户端消息（心跳包等）
+            data = await websocket.receive_text()
+
+            # 可以处理客户端发来的消息
+            try:
+                message = json.loads(data)
+                if message.get("type") == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+            except json.JSONDecodeError:
+                pass
+
+    except WebSocketDisconnect:
+        logger.info(f"[WebSocket] 客户端断开连接: session={session_id}")
+    except Exception as e:
+        logger.error(f"[WebSocket] 连接异常: {e}")
+    finally:
+        await ws_manager.disconnect(websocket, session_id)
+
+
+@app.get("/ws/stats")
+async def get_websocket_stats():
+    """获取WebSocket连接统计"""
+    from apiserver.websocket_manager import get_websocket_manager
+
+    ws_manager = get_websocket_manager()
+    stats = ws_manager.get_stats()
+
+    return {
+        "success": True,
+        "stats": stats,
+    }
+
+
+@app.post("/ws/broadcast")
+async def websocket_broadcast(payload: Dict[str, Any]):
+    """
+    通过WebSocket广播消息（内部接口）
+
+    请求体:
+    - type: 消息类型
+    - content: 消息内容
+    - source: 消息来源
+    - timestamp: 时间戳
+    """
+    from apiserver.websocket_manager import get_websocket_manager
+
+    ws_manager = get_websocket_manager()
+    sent_count = await ws_manager.broadcast(payload)
+
+    return {
+        "success": True,
+        "sent_count": sent_count,
+        "message": f"已推送到{sent_count}个WebSocket连接",
+    }

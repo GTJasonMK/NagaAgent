@@ -12,6 +12,15 @@ logger = logging.getLogger("ScreenVisionAgent")
 
 
 class ScreenVisionAgent:
+    """屏幕视觉代理 - 实时获取并分析用户屏幕内容
+
+    适用场景：
+    1. 用户询问屏幕上的元素（如"右边是什么"、"这个界面怎么操作"）
+    2. 需要基于可见内容提供建议（如"这关怎么过"）
+    3. 用户请求查看/分析/识别屏幕
+    4. 需要确认界面状态（如"我现在在哪个页面"）
+    5. 疑难排查（如"为什么点不了"）
+    """
     name = "ScreenVision Agent"
 
     async def handle_handoff(self, task: dict[str, Any]) -> str:

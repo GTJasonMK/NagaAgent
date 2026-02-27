@@ -20,9 +20,9 @@ const route = useRoute()
 const activeTab = ref<TabKey>((route.query.tab as TabKey) || 'terminal')
 
 const tabs: { key: TabKey, label: string }[] = [
-  { key: 'model', label: '模型' },
-  { key: 'memory', label: '记忆' },
-  { key: 'terminal', label: '终端' },
+  { key: 'model', label: '模型连接' },
+  { key: 'memory', label: '记忆连接' },
+  { key: 'terminal', label: '音画配置' },
 ]
 
 // ── 终端 Tab 逻辑（原 ConfigView） ──

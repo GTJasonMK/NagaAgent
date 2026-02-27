@@ -1,0 +1,166 @@
+"""
+Proactive Vision 触发器
+负责管理冷却时间和发送主动消息
+"""
+
+import asyncio
+import time
+import logging
+from typing import Dict, Optional
+
+from .config import TriggerRule
+
+logger = logging.getLogger(__name__)
+
+
+class ProactiveVisionTrigger:
+    """主动视觉触发器"""
+
+    def __init__(self):
+        self._rule_last_triggered: Dict[str, float] = {}
+
+    async def send_proactive_message(self, rule: TriggerRule, context: str) -> bool:
+        """发送主动消息到前端，返回是否成功"""
+        from .metrics import get_metrics
+
+        metrics = get_metrics()
+
+        # 检查冷却时间
+        if not self._can_trigger(rule):
+            logger.debug(f"[ProactiveVision] 规则 {rule.name} 处于冷却中")
+            return False
+
+        # 渲染消息模板
+        message = rule.message_template.format(context=context)
+
+        # 发送到前端（通过API Server的通知接口）
+        success = await self._notify_frontend(message, rule.name)
+
+        # 记录metrics
+        metrics.record_notification(success)
+
+        if success:
+            # 更新触发时间
+            self._rule_last_triggered[rule.rule_id] = time.time()
+            logger.info(f"[ProactiveVision] 触发规则: {rule.name}")
+            return True
+        else:
+            logger.warning(f"[ProactiveVision] 规则 {rule.name} 消息发送失败")
+            return False
+
+    def _can_trigger(self, rule: TriggerRule) -> bool:
+        """检查规则是否可以触发"""
+        if rule.rule_id not in self._rule_last_triggered:
+            return True
+
+        elapsed = time.time() - self._rule_last_triggered[rule.rule_id]
+        return elapsed >= rule.cooldown_seconds
+
+    async def _notify_frontend(self, message: str, source: str) -> bool:
+        """通知前端显示主动消息（优先使用WebSocket，降级HTTP）"""
+        import httpx
+        from system.config import get_server_port
+
+        api_port = get_server_port("api_server")
+
+        # 尝试通过WebSocket推送
+        ws_success = await self._try_websocket_push(message, source, api_port)
+        if ws_success:
+            return True
+
+        # WebSocket失败，降级到HTTP POST
+        logger.debug("[ProactiveVision] WebSocket推送失败，降级到HTTP")
+        return await self._try_http_push(message, source, api_port)
+
+    async def _try_websocket_push(self, message: str, source: str, api_port: int) -> bool:
+        """尝试通过WebSocket推送消息"""
+        try:
+            import httpx
+
+            # 调用API Server的内部接口触发WebSocket广播
+            url = f"http://127.0.0.1:{api_port}/ws/broadcast"
+            payload = {
+                "type": "proactive_message",
+                "content": message,
+                "source": f"ProactiveVision:{source}",
+                "timestamp": time.time()
+            }
+
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    result = resp.json()
+                    sent_count = result.get("sent_count", 0)
+                    if sent_count > 0:
+                        logger.debug(f"[ProactiveVision] WebSocket推送成功: {sent_count}个连接")
+                        return True
+                    else:
+                        logger.debug("[ProactiveVision] 无活跃WebSocket连接")
+                        return False
+        except Exception as e:
+            logger.debug(f"[ProactiveVision] WebSocket推送失败: {e}")
+            return False
+
+    async def _try_http_push(self, message: str, source: str, api_port: int) -> bool:
+        """通过HTTP POST推送消息（降级方案）"""
+        import httpx
+
+        url = f"http://127.0.0.1:{api_port}/proactive_message"
+        payload = {
+            "message": message,
+            "source": f"ProactiveVision:{source}",
+            "timestamp": time.time()
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.post(url, json=payload)
+                if resp.status_code == 200:
+                    logger.debug(f"[ProactiveVision] HTTP推送成功: {message[:50]}...")
+                    return True
+                else:
+                    logger.warning(f"[ProactiveVision] HTTP响应异常: {resp.status_code}")
+                    return False
+        except httpx.ConnectError:
+            logger.warning("[ProactiveVision] 无法连接到API服务器，请检查服务是否启动")
+            return False
+        except httpx.TimeoutException:
+            logger.warning("[ProactiveVision] HTTP推送超时")
+            return False
+        except Exception as e:
+            logger.error(f"[ProactiveVision] HTTP推送失败: {e}")
+            return False
+
+    def reset_cooldown(self, rule_id: str):
+        """重置指定规则的冷却时间（用于测试或手动重置）"""
+        if rule_id in self._rule_last_triggered:
+            del self._rule_last_triggered[rule_id]
+            logger.info(f"[ProactiveVision] 已重置规则 {rule_id} 的冷却时间")
+
+    def get_cooldown_remaining(self, rule: TriggerRule) -> float:
+        """获取规则剩余冷却时间（秒）"""
+        if rule.rule_id not in self._rule_last_triggered:
+            return 0.0
+
+        elapsed = time.time() - self._rule_last_triggered[rule.rule_id]
+        remaining = rule.cooldown_seconds - elapsed
+        return max(0.0, remaining)
+
+
+# 全局单例
+_trigger: Optional[ProactiveVisionTrigger] = None
+
+
+def get_proactive_trigger() -> Optional[ProactiveVisionTrigger]:
+    """获取触发器单例"""
+    return _trigger
+
+
+def create_proactive_trigger() -> ProactiveVisionTrigger:
+    """创建并注册触发器单例"""
+    global _trigger
+    if _trigger is not None:
+        logger.warning("[ProactiveVision] 触发器已存在，将被替换")
+
+    _trigger = ProactiveVisionTrigger()
+    return _trigger

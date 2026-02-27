@@ -81,6 +81,11 @@ const electronAPI = {
     },
   },
 
+  // 背景图片扫描
+  backgrounds: {
+    scan: () => ipcRenderer.invoke('backgrounds:scan') as Promise<string[]>,
+  },
+
   // 开机自启动
   autoLaunch: {
     get: () => ipcRenderer.invoke('autoLaunch:get') as Promise<boolean>,

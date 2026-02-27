@@ -109,6 +109,12 @@ async def call_tool(req: ToolCallRequest):
 
     try:
         result = await manager.unified_call(req.service_name, tool_call)
+
+        # 如果调用的是screen_vision，通知ProactiveVision重置计时器
+        # 避免AI刚用过screen_vision，ProactiveVision又立即触发重复分析
+        if req.service_name == "screen_vision":
+            asyncio.create_task(_notify_proactive_vision_reset())
+
         return {"status": "ok", "result": result}
     except Exception as e:
         logger.error(f"[MCP Server] 工具调用失败: service={req.service_name}, error={e}")
@@ -160,3 +166,31 @@ async def _send_callback(callback_url: str, session_id: str, results: List[Dict[
                     await asyncio.sleep(1)
     except Exception as e:
         logger.error(f"[MCP Server] 回调失败: {e}")
+
+
+async def _notify_proactive_vision_reset():
+    """通知ProactiveVision重置检查计时器
+
+    当AI主动调用screen_vision时，通知ProactiveVision延迟下次检查，
+    避免短时间内重复分析同一屏幕。
+    """
+    try:
+        import httpx
+        from system.config import get_server_port
+
+        agent_port = get_server_port("agent_server")
+        url = f"http://127.0.0.1:{agent_port}/proactive_vision/reset_timer"
+
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.post(url, json={"reason": "mcp_call_screen_vision"})
+            if resp.status_code == 200:
+                result = resp.json()
+                if result.get("success"):
+                    logger.debug("[MCP Server] 已通知ProactiveVision重置计时器")
+                else:
+                    logger.debug(f"[MCP Server] ProactiveVision重置失败: {result.get('error')}")
+            else:
+                logger.debug(f"[MCP Server] ProactiveVision通知失败: HTTP {resp.status_code}")
+    except Exception as e:
+        # 静默失败，不影响主流程
+        logger.debug(f"[MCP Server] ProactiveVision通知异常（忽略）: {e}")
