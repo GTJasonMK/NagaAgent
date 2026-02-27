@@ -48,6 +48,9 @@ export interface MemoryStats {
     taskTimeout: number
   }
 }
+import type { TravelSession } from '@/travel/types'
+export type { TravelDiscovery, SocialInteraction, TravelSession } from '@/travel/types'
+
 export class CoreApiClient extends ApiClient {
   health(): Promise<{
     status: 'healthy'
@@ -386,6 +389,24 @@ export class CoreApiClient extends ApiClient {
     return this.instance.get('/live2d/actions')
   }
 
+  // ── ASR 语音识别 ──
+
+  transcribeAudio(file: Blob, options?: {
+    language?: string
+    model?: string
+    prompt?: string
+  }): Promise<{ text: string }> {
+    const formData = new FormData()
+    formData.append('file', file, 'recording.webm')
+    if (options?.language) formData.append('language', options.language)
+    if (options?.model) formData.append('model', options.model)
+    if (options?.prompt) formData.append('prompt', options.prompt)
+    return this.instance.post('/asr/transcribe', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+    })
+  }
+
   // ── NagaCAS 认证 ──
 
   authLogin(username: string, password: string, captchaId?: string, captchaAnswer?: string): Promise<{
@@ -425,6 +446,36 @@ export class CoreApiClient extends ApiClient {
     question: string
   }> {
     return this.instance.get('/auth/captcha')
+  }
+
+  // ── 旅行 ──
+
+  startTravel(params: {
+    timeLimitMinutes?: number
+    creditLimit?: number
+    wantFriends?: boolean
+    friendDescription?: string
+  }): Promise<{ status: 'success', sessionId: string }> {
+    return this.instance.post('/travel/start', params)
+  }
+
+  getTravelStatus(): Promise<{
+    status: 'success'
+    session: TravelSession | null
+    active: boolean
+  }> {
+    return this.instance.get('/travel/status')
+  }
+
+  stopTravel(): Promise<{ status: 'success', sessionId: string }> {
+    return this.instance.post('/travel/stop')
+  }
+
+  getTravelHistory(): Promise<{
+    status: 'success'
+    sessions: TravelSession[]
+  }> {
+    return this.instance.get('/travel/history')
   }
 }
 

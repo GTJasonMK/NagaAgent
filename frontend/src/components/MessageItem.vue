@@ -1,10 +1,51 @@
 <script setup lang="ts">
 import type { Message } from '@/utils/session'
-import { ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { CONFIG } from '@/utils/config'
 import Markdown from './Markdown.vue'
 
-defineProps<Message>()
+const props = defineProps<Message>()
+
+const GENERATING_PHRASES = [
+  'Generating...',
+  'Thinking...',
+  'Composing...',
+  'Crafting...',
+  'Processing...',
+  'Pondering...',
+  'Formulating...',
+  'Conjuring...',
+  'Weaving...',
+  'Brewing...',
+]
+
+const phraseIndex = ref(Math.floor(Math.random() * GENERATING_PHRASES.length))
+let phraseTimer: ReturnType<typeof setInterval> | undefined
+
+const generatingText = computed(() => {
+  return GENERATING_PHRASES[phraseIndex.value % GENERATING_PHRASES.length] ?? 'Generating...'
+})
+
+const shouldAnimate = computed(() => props.generating && !props.content && !props.reasoning)
+
+watch(shouldAnimate, (active) => {
+  if (active && !phraseTimer) {
+    phraseTimer = setInterval(() => {
+      phraseIndex.value = Math.floor(Math.random() * GENERATING_PHRASES.length)
+    }, 2000)
+  }
+  else if (!active && phraseTimer) {
+    clearInterval(phraseTimer)
+    phraseTimer = undefined
+  }
+}, { immediate: true })
+
+onUnmounted(() => {
+  if (phraseTimer) {
+    clearInterval(phraseTimer)
+    phraseTimer = undefined
+  }
+})
 
 const COLOR_MAP = {
   system: 'bg-gray-500',
@@ -49,7 +90,11 @@ const reasoningExpanded = ref(true)
       </div>
     </div>
     <div class="text-white mx-2 relative message-body">
-      <Markdown :source="content || (reasoning ? '' : 'Generating...')" />
+      <div v-if="!content && !reasoning && generating && status" class="status-line">
+        <span class="status-spinner" />
+        <span class="status-text">{{ status }}</span>
+      </div>
+      <Markdown v-else :source="content || (reasoning ? '' : generatingText)" />
     </div>
   </div>
 </template>
@@ -137,6 +182,33 @@ const reasoningExpanded = ref(true)
   max-width: 100%;
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+/* 阶段状态行 */
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.status-spinner {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid rgba(212, 175, 55, 0.2);
+  border-top-color: rgba(212, 175, 55, 0.8);
+  border-radius: 50%;
+  animation: status-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes status-spin {
+  to { transform: rotate(360deg); }
+}
+
+.status-text {
+  font-size: 0.85rem;
+  color: rgba(212, 175, 55, 0.7);
 }
 
 /* info 标记分隔线 */

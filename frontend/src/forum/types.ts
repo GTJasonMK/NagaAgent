@@ -5,37 +5,43 @@ export interface ForumAuthor {
   id: string
   name: string
   avatar: string
-  level: number // 1-12
+  level?: number
+  bio?: string
 }
 
 export interface ForumComment {
   id: string
-  author: ForumAuthor
+  postId: string
+  authorId: string
+  authorType: string
   content: string
-  images?: string[]
+  images: string[]
+  likesCount: number
+  wantToMeet: boolean
+  replyToId: string | null
   createdAt: string
-  likes: number
-  liked?: boolean
-  replyTo?: {
-    id: string
-    authorName: string
-  }
-  replies?: ForumComment[]
+  author: ForumAuthor
+  liked: boolean
 }
 
 export interface ForumPost {
   id: string
   title: string
-  summary: string
   content: string
-  cover?: string
-  images?: string[]
-  author: ForumAuthor
+  tags: string[]
+  images: string[]
+  authorId: string
+  authorType: string
+  source: string | null
+  likesCount: number
+  commentsCount: number
+  sharesCount: number
+  viewCount: number
+  pinned: boolean
   createdAt: string
-  shares: number
-  comments: number
-  likes: number
-  liked?: boolean
+  updatedAt: string
+  author: ForumAuthor
+  liked: boolean
 }
 
 export interface ForumPostDetail extends ForumPost {
@@ -49,30 +55,105 @@ export interface PaginatedResponse<T> {
   pageSize: number
 }
 
-export interface AgentProfile {
-  agentId: string
-  name: string
+export interface ForumStats {
+  posts: number
+  replies: number
+  likes: number
+  messages: number
+  shares: number
+}
+
+export interface ForumQuota {
+  dailyBudget: number
+  usedToday: number
+}
+
+export interface ForumProfile {
+  userId: string
+  displayName: string
+  bio: string
+  avatar: string
+  contactInfo: string
+  interests: string[]
   level: number
-  joinedAt: string
-  forumEnabled: boolean
-  account: {
-    name: string
-    credits: number
-  }
-  stats: {
-    posts: number
-    replies: number
-    messages: number
-    likes: number
-    shares: number
-  }
-  quota: {
-    dailyBudget: number
-    usedToday: number
-    costPerPost: number
-    costPerReply: number
-  }
-  recentPosts: { id: string, title: string, date: string }[]
-  recentReplies: { postId: string, postTitle: string, excerpt: string, date: string }[]
-  recentMessages: { from: string, preview: string, date: string, read: boolean, postId: string }[]
+  autoEvaluate: number
+  creditsBalance: number | null
+  createdAt: string
+  updatedAt: string
+  // 网络探索扩展字段（服务器支持后返回）
+  stats?: ForumStats
+  quota?: ForumQuota
+  forumEnabled?: boolean
+  unreadCount?: number
+}
+
+/** Comment item returned by GET /comments (includes postTitle) */
+export interface ForumCommentListItem extends ForumComment {
+  postTitle: string
+}
+
+export interface ForumBoard {
+  id: string
+  name: string
+  slug: string
+  description: string
+  sortOrder: number
+  postCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FriendRequest {
+  id: string
+  fromUser: ForumAuthor
+  toUser: ForumAuthor
+  postId: string | null
+  commentId: string | null
+  status: 'pending' | 'accepted' | 'declined'
+  createdAt: string
+}
+
+export interface ForumConnection {
+  connectionId: string
+  friend: ForumAuthor & { bio?: string }
+  createdAt: string
+}
+
+export interface ForumMessage {
+  id: string
+  fromUserId: string
+  toUserId: string
+  content: string
+  postId: string | null
+  read: boolean
+  isSystem: boolean
+  fromUser: { name: string, avatar: string }
+  createdAt: string
+}
+
+export interface ForumNotification {
+  id: string
+  type: 'friend_request' | 'friend_accepted' | 'message'
+  title: string
+  body: string
+  data: Record<string, any>
+  isRead: boolean
+  createdAt: string
+}
+
+export interface CreatePostPayload {
+  title: string
+  content: string
+  tags?: string[]
+  images?: string[]
+  boardId?: string
+  source?: string
+}
+
+export interface CreateCommentPayload {
+  postId: string
+  content: string
+  wantToMeet?: boolean
+  replyToId?: string
+  images?: string[]
 }

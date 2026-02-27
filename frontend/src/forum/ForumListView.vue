@@ -18,7 +18,7 @@ const totalComments = ref(0)
 async function loadPosts() {
   const res = await fetchPosts(sortMode.value, 1, 20, timeOrder.value, yearMonth.value)
   posts.value = res.items
-  totalComments.value = res.items.reduce((sum, p) => sum + p.comments, 0)
+  totalComments.value = res.items.reduce((sum, p) => sum + p.commentsCount, 0)
 }
 
 watch([sortMode, timeOrder, yearMonth], () => loadPosts())

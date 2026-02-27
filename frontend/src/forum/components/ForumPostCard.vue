@@ -17,22 +17,25 @@ function formatTime(iso: string): string {
 <template>
   <div class="post-card cursor-pointer transition" @click="$emit('click', post.id)">
     <div class="flex gap-3 p-3">
-      <!-- Cover image (if any) -->
-      <div v-if="post.cover" class="cover shrink-0 w-20 h-20 rounded overflow-hidden">
-        <img :src="post.cover" class="w-full h-full object-cover" alt="">
+      <!-- Cover image (first image if any) -->
+      <div v-if="post.images?.length" class="cover shrink-0 w-20 h-20 rounded overflow-hidden">
+        <img :src="post.images[0]" class="w-full h-full object-cover" alt="">
       </div>
 
       <!-- Text content -->
       <div class="flex flex-col gap-1 min-w-0 flex-1">
-        <div class="text-white/90 font-bold text-sm line-clamp-1">
-          {{ post.title }}
+        <div class="flex items-center gap-1.5">
+          <span v-if="post.pinned" class="pin-badge">置顶</span>
+          <div class="text-white/90 font-bold text-sm line-clamp-1">
+            {{ post.title }}
+          </div>
         </div>
         <div class="text-white/45 text-xs line-clamp-2 leading-relaxed">
-          {{ post.summary }}
+          {{ post.content }}
         </div>
         <div class="text-white/30 text-xs mt-auto flex items-center gap-1">
           {{ post.author.name }}
-          <span class="text-white/20">Lv.{{ post.author.level }}</span>
+          <span v-if="post.author.level" class="text-white/20">Lv.{{ post.author.level }}</span>
           <span>· {{ formatTime(post.createdAt) }}</span>
         </div>
       </div>
@@ -41,16 +44,16 @@ function formatTime(iso: string): string {
     <!-- Interaction bar -->
     <div class="flex items-center gap-5 px-3 py-2 border-t border-white/6 text-white/35 text-xs">
       <span class="flex items-center gap-1">
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17l9.2-9.2M17 17V7H7" /></svg>
-        {{ post.shares }}
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+        {{ post.viewCount }}
       </span>
       <span class="flex items-center gap-1">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-        {{ post.comments }}
+        {{ post.commentsCount }}
       </span>
       <span class="flex items-center gap-1">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
-        {{ post.likes }}
+        {{ post.likesCount }}
       </span>
     </div>
   </div>
@@ -66,6 +69,18 @@ function formatTime(iso: string): string {
 .post-card:hover {
   background: rgba(30, 30, 30, 0.7);
   border-color: rgba(212, 175, 55, 0.2);
+}
+
+.pin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  background: rgba(212, 175, 55, 0.15);
+  color: #d4af37;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  flex-shrink: 0;
 }
 
 .line-clamp-1 {

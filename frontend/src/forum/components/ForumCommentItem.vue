@@ -4,10 +4,14 @@ import { likeComment } from '../api'
 
 const props = defineProps<{
   comment: ForumComment
-  isReply?: boolean
+  isPostOwner?: boolean
 }>()
 
-defineEmits<{ 'preview-image': [src: string] }>()
+defineEmits<{
+  'preview-image': [src: string]
+  'accept-friend': [commentId: string]
+  'decline-friend': [commentId: string]
+}>()
 
 function formatTime(iso: string): string {
   const d = new Date(iso)
@@ -24,7 +28,7 @@ async function toggleLike() {
 </script>
 
 <template>
-  <div class="comment-item" :class="{ 'is-reply': isReply }">
+  <div class="comment-item">
     <div class="flex gap-2">
       <!-- Avatar -->
       <div class="avatar w-7 h-7 rounded-full flex items-center justify-center text-xs shrink-0">
@@ -35,9 +39,13 @@ async function toggleLike() {
         <!-- Author line -->
         <div class="flex items-center gap-2 text-xs">
           <span class="text-white/70 font-bold">{{ comment.author.name }}</span>
-          <span class="text-white/25">Lv.{{ comment.author.level }}</span>
-          <span v-if="comment.replyTo" class="text-white/30">
-            回复 <span class="text-#d4af37/60">@{{ comment.replyTo.authorName }}</span>
+          <span v-if="comment.author.level" class="text-white/25">Lv.{{ comment.author.level }}</span>
+          <!-- Want to meet badge -->
+          <span v-if="comment.wantToMeet" class="meet-badge">
+            想认识!
+          </span>
+          <span v-if="comment.replyToId" class="text-white/30">
+            回复了评论
           </span>
           <span class="text-white/20 ml-auto shrink-0">{{ formatTime(comment.createdAt) }}</span>
         </div>
@@ -47,8 +55,8 @@ async function toggleLike() {
           {{ comment.content }}
         </div>
 
-        <!-- Images (only top-level comments) -->
-        <div v-if="!isReply && comment.images?.length" class="flex gap-2 mt-2 flex-wrap">
+        <!-- Images -->
+        <div v-if="comment.images?.length" class="flex gap-2 mt-2 flex-wrap">
           <img
             v-for="(img, i) in comment.images"
             :key="i"
@@ -58,7 +66,7 @@ async function toggleLike() {
           >
         </div>
 
-        <!-- Like button -->
+        <!-- Actions row -->
         <div class="flex items-center gap-3 mt-1.5 text-xs">
           <button
             class="like-btn flex items-center gap-1 border-none bg-transparent cursor-pointer p-0 transition"
@@ -66,19 +74,24 @@ async function toggleLike() {
             @click="toggleLike"
           >
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
-            {{ comment.likes }}
+            {{ comment.likesCount }}
           </button>
-        </div>
 
-        <!-- Nested replies -->
-        <div v-if="comment.replies?.length" class="mt-2 flex flex-col gap-2">
-          <ForumCommentItem
-            v-for="reply in comment.replies"
-            :key="reply.id"
-            :comment="reply"
-            :is-reply="true"
-            @preview-image="$emit('preview-image', $event)"
-          />
+          <!-- Accept/decline friend request (only visible to post owner) -->
+          <template v-if="comment.wantToMeet && isPostOwner">
+            <button
+              class="friend-action accept"
+              @click="$emit('accept-friend', comment.id)"
+            >
+              接受
+            </button>
+            <button
+              class="friend-action decline"
+              @click="$emit('decline-friend', comment.id)"
+            >
+              拒绝
+            </button>
+          </template>
         </div>
       </div>
     </div>
@@ -88,11 +101,6 @@ async function toggleLike() {
 <style scoped>
 .comment-item {
   padding: 8px 0;
-}
-.comment-item.is-reply {
-  padding-left: 4px;
-  border-left: 2px solid rgba(212, 175, 55, 0.1);
-  padding: 6px 0 6px 8px;
 }
 
 .avatar {
@@ -112,5 +120,40 @@ async function toggleLike() {
 }
 .like-btn.liked svg {
   fill: #d4af37;
+}
+
+.meet-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  background: rgba(212, 175, 55, 0.15);
+  color: #d4af37;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+}
+
+.friend-action {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  transition: all 0.2s;
+}
+.friend-action.accept {
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+.friend-action.accept:hover {
+  background: rgba(74, 222, 128, 0.1);
+}
+.friend-action.decline {
+  color: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.friend-action.decline:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 </style>

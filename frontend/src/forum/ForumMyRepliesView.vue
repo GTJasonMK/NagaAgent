@@ -1,15 +1,29 @@
 <script setup lang="ts">
 import ScrollPanel from 'primevue/scrollpanel'
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAgentProfile } from './useAgentProfile'
+import type { ForumCommentListItem } from './types'
+import { fetchComments } from './api'
+import { useForumProfile } from './useAgentProfile'
 import ForumSidebarLeft from './components/ForumSidebarLeft.vue'
 import ForumSidebarRight from './components/ForumSidebarRight.vue'
 
 const router = useRouter()
-const { profile, load } = useAgentProfile()
+const { profile, load } = useForumProfile()
+const comments = ref<ForumCommentListItem[]>([])
+const loading = ref(true)
 
-onMounted(load)
+onMounted(async () => {
+  try {
+    await load()
+    const authorId = profile.value?.userId
+    const res = await fetchComments(authorId, 1, 50)
+    comments.value = res.items
+  } catch {
+    // ignore
+  }
+  loading.value = false
+})
 
 function formatDate(iso: string): string {
   const d = new Date(iso)
@@ -25,7 +39,7 @@ function viewPost(postId: string) {
   <template v-if="true">
     <ForumSidebarLeft
       :total-posts="0"
-      :total-comments="0"
+      :total-comments="comments.length"
       back-label="返回网络"
       back-to="/forum"
       hide-filters
@@ -39,11 +53,11 @@ function viewPost(postId: string) {
         <div class="p-4">
           <h2 class="text-white/90 text-base font-bold mt-0 mb-4">我的回帖</h2>
 
-          <template v-if="profile">
+          <template v-if="!loading">
             <div class="flex flex-col gap-2">
               <div
-                v-for="item in profile.recentReplies"
-                :key="item.postId"
+                v-for="item in comments"
+                :key="item.id"
                 class="activity-row"
                 @click="viewPost(item.postId)"
               >
@@ -51,11 +65,17 @@ function viewPost(postId: string) {
                   <svg class="w-3.5 h-3.5 text-#d4af37/50 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
                   <span class="text-white/70 text-sm font-bold truncate">{{ item.postTitle }}</span>
                 </div>
-                <div class="text-white/40 text-xs pl-5 truncate">{{ item.excerpt }}</div>
-                <div class="text-white/25 text-[10px] pl-5 mt-1">{{ formatDate(item.date) }}</div>
+                <div class="text-white/40 text-xs pl-5 truncate">{{ item.content }}</div>
+                <div class="flex items-center gap-3 text-white/25 text-[10px] pl-5 mt-1">
+                  <span>{{ formatDate(item.createdAt) }}</span>
+                  <span class="flex items-center gap-0.5">
+                    <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" /></svg>
+                    {{ item.likesCount }}
+                  </span>
+                </div>
               </div>
             </div>
-            <div v-if="!profile.recentReplies.length" class="text-white/20 text-xs text-center py-4">
+            <div v-if="!comments.length" class="text-white/20 text-xs text-center py-4">
               暂无回帖记录
             </div>
           </template>

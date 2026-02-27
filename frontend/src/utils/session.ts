@@ -8,6 +8,7 @@ export interface Message {
   content: string
   reasoning?: string
   generating?: boolean
+  status?: string
   sender?: string
 }
 
