@@ -298,63 +298,77 @@ async function handleFileUpload(event: Event) {
   target.value = ''
 }
 
-// ── 语音输入 ──
+// ── 语音输入（MediaRecorder + ASR API） ──
 const isRecording = ref(false)
-let recognition: any = null
+let mediaRecorder: MediaRecorder | null = null
+let audioChunks: Blob[] = []
 
-function toggleVoiceInput() {
+async function toggleVoiceInput() {
   if (isRecording.value) {
     stopVoiceInput()
     return
   }
 
-  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-  if (!SpeechRecognition) {
-    MESSAGES.value.push({ role: 'system', content: '当前浏览器不支持语音识别，请使用 Chrome 或 Edge' })
-    return
-  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    audioChunks = []
+    mediaRecorder = new MediaRecorder(stream, { mimeType: getSupportedMimeType() })
 
-  recognition = new SpeechRecognition()
-  recognition.lang = 'zh-CN'
-  recognition.interimResults = true
-  recognition.continuous = false
-
-  recognition.onresult = (event: any) => {
-    let transcript = ''
-    for (let i = 0; i < event.results.length; i++) {
-      transcript += event.results[i][0].transcript
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data)
     }
-    input.value = transcript
-  }
 
-  recognition.onend = () => {
-    isRecording.value = false
-    recognition = null
-  }
+    mediaRecorder.onstop = async () => {
+      // 停止所有音轨，释放麦克风
+      stream.getTracks().forEach(t => t.stop())
+      if (audioChunks.length === 0) return
 
-  recognition.onerror = (event: any) => {
-    isRecording.value = false
-    recognition = null
-    if (event.error === 'network') {
-      MESSAGES.value.push({ role: 'system', content: '语音识别网络错误：浏览器语音识别需要连接 Google 服务器，请检查网络连接或使用代理。' })
+      const audioBlob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || 'audio/webm' })
+      try {
+        const { text } = await API.transcribeAudio(audioBlob, { language: 'zh' })
+        if (text) input.value += text
+      }
+      catch (err: any) {
+        const status = err?.response?.status
+        if (status === 401) {
+          MESSAGES.value.push({ role: 'system', content: '语音识别需要登录后使用' })
+        }
+        else if (status === 402) {
+          MESSAGES.value.push({ role: 'system', content: '余额不足，无法使用语音识别' })
+        }
+        else {
+          MESSAGES.value.push({ role: 'system', content: `语音识别失败: ${err.message || err}` })
+        }
+      }
     }
-    else if (event.error === 'not-allowed') {
-      MESSAGES.value.push({ role: 'system', content: '语音识别权限被拒绝，请在浏览器设置中允许麦克风访问。' })
+
+    mediaRecorder.start()
+    isRecording.value = true
+  }
+  catch (err: any) {
+    if (err.name === 'NotAllowedError') {
+      MESSAGES.value.push({ role: 'system', content: '麦克风权限被拒绝，请在系统设置中允许麦克风访问' })
     }
-    else if (event.error !== 'no-speech') {
-      MESSAGES.value.push({ role: 'system', content: `语音识别错误: ${event.error}` })
+    else {
+      MESSAGES.value.push({ role: 'system', content: `无法启动录音: ${err.message || err}` })
     }
   }
-
-  recognition.start()
-  isRecording.value = true
 }
 
 function stopVoiceInput() {
-  if (recognition) {
-    recognition.stop()
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop()
   }
+  mediaRecorder = null
   isRecording.value = false
+}
+
+function getSupportedMimeType(): string {
+  const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
+  for (const t of types) {
+    if (MediaRecorder.isTypeSupported(t)) return t
+  }
+  return ''
 }
 </script>
 
