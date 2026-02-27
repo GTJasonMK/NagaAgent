@@ -12,6 +12,7 @@ import asyncio
 import sys
 import os
 from typing import Callable, Optional, Dict, List
+import threading
 
 # 添加项目根目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,8 +28,8 @@ except ImportError:
 logger = logging.getLogger("StreamingToolCallExtractor")
 
 # TTS 文本分节常量
-MAX_SENTENCE_LENGTH = 80   # 缓冲池最大长度，超过即强制截断
-MIN_SENTENCE_LENGTH = 10   # 强制截断时的最小句子长度
+MAX_SENTENCE_LENGTH = 50   # 缓冲池最大长度，超过即强制截断
+MIN_SENTENCE_LENGTH = 30   # 30字开始找断点，50字强制截断
 SECONDARY_BREAKS = "，、,— "  # 次要断点字符（逗号、顿号、空格、破折号）
 
 class CallbackManager:
@@ -82,6 +83,10 @@ class StreamingToolCallExtractor:
         
         # 语音集成（可选）
         self.voice_integration = None
+
+        # 文字-语音同步：首个 TTS 就绪前缓冲前端显示
+        self._pending_display = []  # [(text, type), ...]
+        self._first_tts_ready = None  # threading.Event from voice_integration
         
         # 工具调用功能已移除
         self.tool_calls_queue = None
@@ -93,6 +98,11 @@ class StreamingToolCallExtractor:
         # 注册回调函数（仅文本块）
         self.callback_manager.register_callback("text_chunk", on_text_chunk)
         self.voice_integration = voice_integration
+        # 获取语音同步事件（首个 TTS 片段就绪后解除文字缓冲）
+        if voice_integration and hasattr(voice_integration, 'first_tts_ready'):
+            self._first_tts_ready = voice_integration.first_tts_ready
+        else:
+            self._first_tts_ready = None
     
     async def process_text_chunk(self, text_chunk: str):
         """
@@ -107,11 +117,21 @@ class StreamingToolCallExtractor:
         if not text_chunk:
             return None
 
-        # 调用文本块回调，将文本发送到前端
+        # 文字-语音同步：首个 TTS 未就绪前缓冲文字，就绪后一次性 flush
         results = []
-        result = await self.callback_manager.call_callback("text_chunk", text_chunk, "chunk")
-        if result:
-            results.append(result)
+        if self._first_tts_ready and not self._first_tts_ready.is_set():
+            self._pending_display.append((text_chunk, "chunk"))
+        else:
+            # flush 之前缓冲的文本
+            if self._pending_display:
+                for _pt, _pp in self._pending_display:
+                    _r = await self.callback_manager.call_callback("text_chunk", _pt, _pp)
+                    if _r:
+                        results.append(_r)
+                self._pending_display.clear()
+            result = await self.callback_manager.call_callback("text_chunk", text_chunk, "chunk")
+            if result:
+                results.append(result)
 
         # 累积完整文本（用于最终保存到数据库）
         self.complete_text += text_chunk
@@ -180,7 +200,6 @@ class StreamingToolCallExtractor:
         """发送文本到语音集成（不阻塞文本流）"""
         if self.voice_integration:
             try:
-                import threading
                 threading.Thread(
                     target=self.voice_integration.receive_text_chunk,
                     args=(text,),
@@ -194,7 +213,6 @@ class StreamingToolCallExtractor:
         在回复结束、进入代码块时调用。"""
         if self.voice_integration:
             try:
-                import threading
                 def _do():
                     if text and text.strip():
                         self.voice_integration.receive_text_chunk(text)
@@ -205,8 +223,11 @@ class StreamingToolCallExtractor:
     
     async def finish_processing(self):
         """完成处理，清理剩余内容"""
-        # 无论 text_buffer 是否为空，都需要刷新语音缓冲区
-        # （voice_integration 可能还有未处理的文本）
+        # flush 所有未显示的缓冲文本（TTS 迟迟未就绪的兜底）
+        if self._pending_display:
+            for _pt, _pp in self._pending_display:
+                await self.callback_manager.call_callback("text_chunk", _pt, _pp)
+            self._pending_display.clear()
         await self._flush_text_buffer()
         return None
     
@@ -220,6 +241,7 @@ class StreamingToolCallExtractor:
         self.complete_text = ""
         self.in_code_block = False
         self.backtick_count = 0
+        self._pending_display.clear()
     
     async def process_streaming_response(self, llm_service, messages: List[Dict], 
                                        temperature: float = 0.7, voice_integration=None):

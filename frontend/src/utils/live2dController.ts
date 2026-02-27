@@ -79,6 +79,7 @@ let expressionActive = false
 let mouthTarget = 0
 let mouthCurrent = 0
 let mouthNextChangeTime = 0
+let lastMouthParam: string | null = null // 记录嘴巴参数名，用于退出 talking 时闭嘴
 
 // ─── 手动覆盖通道 ──────────────────────────────────
 
@@ -256,10 +257,24 @@ function computeMouth(now: number, dt: number): Record<string, number> {
   if (!actionsData)
     return {}
   const stateCfg = actionsData.states[currentStateName]
-  if (!stateCfg?.mouth)
+
+  if (!stateCfg?.mouth) {
+    // 非 talking 状态：平滑闭嘴
+    if (lastMouthParam) {
+      mouthCurrent = lerp(mouthCurrent, 0, smoothFactor(30, dt))
+      if (Math.abs(mouthCurrent) < 0.001) {
+        mouthCurrent = 0
+        const param = lastMouthParam
+        lastMouthParam = null
+        return { [param]: 0 }
+      }
+      return { [lastMouthParam]: mouthCurrent }
+    }
     return {}
+  }
 
   const cfg = stateCfg.mouth
+  lastMouthParam = cfg.param
   if (now >= mouthNextChangeTime) {
     mouthTarget = cfg.min + Math.random() * (cfg.max - cfg.min)
     mouthNextChangeTime = now + 80 + Math.random() * 170
@@ -415,10 +430,7 @@ function tick(now: number) {
   if (currentStateName !== live2dState.value) {
     currentStateName = live2dState.value
     stateStartTime = now
-    if (currentStateName !== 'talking') {
-      mouthCurrent = 0
-      mouthTarget = 0
-    }
+    // 嘴巴由 computeMouth 平滑闭合，不在这里强制归零
   }
 
   // ── 计算各正交通道 ──
@@ -592,6 +604,7 @@ export function destroyController() {
   // 嘴巴
   mouthCurrent = 0
   mouthTarget = 0
+  lastMouthParam = null
   // 追踪
   lastTickTime = 0
   isTracking = false

@@ -11,11 +11,31 @@ import { live2dState, setEmotion } from '@/utils/live2dController'
 import { CURRENT_SESSION_ID, formatRelativeTime, IS_TEMPORARY_SESSION, loadCurrentSession, MESSAGES, newSession, switchSession } from '@/utils/session'
 import { isPlaying, speak, stop as stopTTS } from '@/utils/tts'
 
-export function chatStream(content: string, options?: { skill?: string, images?: string[] }) {
+export function chatStream(content: string, options?: { skill?: string, images?: string[], voiceInput?: boolean }) {
   // 新问答开始时，立即中止上一次的 TTS 播放
   stopTTS()
 
   MESSAGES.value.push({ role: 'user', content: options?.images?.length ? `[截图x${options.images.length}] ${content}` : content })
+
+  // 预先推入 assistant 消息（立即显示，不等 API 响应）
+  MESSAGES.value.push({ role: 'assistant', content: '', reasoning: '', generating: true, status: options?.voiceInput ? '理解话语中' : undefined })
+  const message = MESSAGES.value[MESSAGES.value.length - 1]!
+  // 追踪纯LLM内容（不含工具状态标记），用于TTS朗读
+  let spokenContent = ''
+
+  // 语音同步：语音开启时缓冲内容，等 TTS 就绪后一起释放
+  const voiceSync = CONFIG.value.system.voice_enabled
+  let contentBuf = ''
+  const pushContent = (text: string) => {
+    contentBuf += text
+    if (!voiceSync) message.content = contentBuf
+  }
+
+  live2dState.value = 'thinking'
+  let compressTimer: ReturnType<typeof setTimeout> | undefined
+
+  // 记录当前轮次 content 流的起始位置，content_clean 只替换当前轮的 LLM 输出
+  let roundContentStart = 0
 
   API.chatStream(content, {
     sessionId: CURRENT_SESSION_ID.value ?? undefined,
@@ -27,13 +47,6 @@ export function chatStream(content: string, options?: { skill?: string, images?:
     if (sessionId) {
       CURRENT_SESSION_ID.value = sessionId
     }
-    MESSAGES.value.push({ role: 'assistant', content: '', reasoning: '', generating: true })
-    const message = MESSAGES.value[MESSAGES.value.length - 1]!
-    // 追踪纯LLM内容（不含工具状态标记），用于TTS朗读
-    let spokenContent = ''
-
-    live2dState.value = 'thinking'
-    let compressTimer: ReturnType<typeof setTimeout> | undefined
 
     // 情感解析函数
     function parseEmotionFromText(text: string): 'normal' | 'positive' | 'negative' | 'surprise' {
@@ -49,15 +62,12 @@ export function chatStream(content: string, options?: { skill?: string, images?:
       return 'normal'
     }
 
-    // 记录当前轮次 content 流的起始位置，content_clean 只替换当前轮的 LLM 输出
-    let roundContentStart = 0
-
     for await (const chunk of response) {
       if (chunk.type === 'reasoning') {
         message.reasoning = (message.reasoning || '') + chunk.text
       }
       else if (chunk.type === 'content') {
-        message.content += chunk.text
+        pushContent(chunk.text || '')
         spokenContent += chunk.text
         // 检测情感标记并设置表情
         const emotion = parseEmotionFromText(chunk.text || '')
@@ -67,7 +77,8 @@ export function chatStream(content: string, options?: { skill?: string, images?:
       }
       else if (chunk.type === 'content_clean') {
         // 仅替换当前轮次的 LLM 输出（从 roundContentStart 开始），保留之前轮次的工具通知
-        message.content = message.content.substring(0, roundContentStart) + (chunk.text || '')
+        contentBuf = contentBuf.substring(0, roundContentStart) + (chunk.text || '')
+        if (!voiceSync) message.content = contentBuf
         spokenContent = chunk.text || ''
       }
       else if (chunk.type === 'tool_calls') {
@@ -77,14 +88,14 @@ export function chatStream(content: string, options?: { skill?: string, images?:
           const name = c.service_name || c.agentType || 'tool'
           return `🔧 ${name}`
         }).join(', ')
-        message.content += `\n\n> 正在执行工具: ${callDesc}...\n`
+        pushContent(`\n\n> 正在执行工具: ${callDesc}...\n`)
         // OpenClaw 工具可能耗时较长，添加提示
         const hasOpenclaw = calls.some((c: any) => {
           const name = (c.service_name || c.agentType || '').toLowerCase()
           return name.includes('openclaw') || name.includes('agent')
         })
         if (hasOpenclaw) {
-          message.content += '> ⏳ OpenClaw 工具处理可能会比较久，预计需要两分钟\n'
+          pushContent('> ⏳ OpenClaw 工具处理可能会比较久，预计需要两分钟\n')
         }
       }
       else if (chunk.type === 'tool_results') {
@@ -93,17 +104,17 @@ export function chatStream(content: string, options?: { skill?: string, images?:
         for (const r of results) {
           const status = r.status === 'success' ? '✅' : '❌'
           const label = r.tool_name ? `${r.service_name}: ${r.tool_name}` : r.service_name
-          message.content += `\n> ${status} ${label}\n`
+          pushContent(`\n> ${status} ${label}\n`)
         }
-        message.content += '\n'
+        pushContent('\n')
         // 工具结果追加完毕，更新下一轮 content 的起始位置
-        roundContentStart = message.content.length
+        roundContentStart = contentBuf.length
       }
       else if (chunk.type === 'round_start' && (chunk.round ?? 0) > 1) {
         // 多轮分隔
-        message.content += '\n---\n\n'
+        pushContent('\n---\n\n')
         // 新一轮开始，更新 content 起始位置
-        roundContentStart = message.content.length
+        roundContentStart = contentBuf.length
       }
       else if (chunk.type === 'token_refreshed') {
         // 后端刷新了 token，同步到前端（防止后续轮询请求用旧 token 覆盖）
@@ -114,10 +125,13 @@ export function chatStream(content: string, options?: { skill?: string, images?:
       else if (chunk.type === 'auth_expired') {
         // 后端 LLM 认证失败且刷新也失败，触发重新登录
         authExpired.value = true
-        message.content += chunk.text || '登录已过期，请重新登录'
+        pushContent(chunk.text || '登录已过期，请重新登录')
+      }
+      else if (chunk.type === 'status') {
+        message.status = chunk.text || ''
       }
       else if (chunk.type === 'compress_start' || chunk.type === 'compress_progress' || chunk.type === 'compress_end') {
-        // 上下文压缩进度提示（覆盖式显示，compress_end 后非阻塞延迟清空）
+        // 上下文压缩进度提示（覆盖式显示，直接写 message.content 不走缓冲）
         message.content = `> ${chunk.text}\n\n`
         if (chunk.type === 'compress_end') {
           compressTimer = setTimeout(() => {
@@ -141,22 +155,40 @@ export function chatStream(content: string, options?: { skill?: string, images?:
       window.dispatchEvent(new CustomEvent('token', { detail: chunk.text || '' }))
     }
 
-    delete message.generating
-    if (!message.reasoning) {
-      delete message.reasoning
-    }
-
-    if (CONFIG.value.system.voice_enabled && spokenContent) {
+    if (voiceSync && spokenContent) {
+      // "组织语言中" 阶段：等待 TTS 首段音频就绪
+      message.status = '组织语言中'
       speak(spokenContent).catch(() => {
         live2dState.value = 'idle'
       })
+      // 等待音频开始播放（或超时 10s 兜底）
+      await new Promise<void>((resolve) => {
+        if (isPlaying.value) { resolve(); return }
+        const unwatch = watch(isPlaying, (playing) => {
+          if (playing) { unwatch(); resolve() }
+        })
+        setTimeout(() => { unwatch(); resolve() }, 10000)
+      })
+      // 释放缓冲内容
+      message.content = contentBuf
+      delete message.generating
+      delete message.status
+      if (!message.reasoning) delete message.reasoning
     }
     else {
+      // 无语音 / 无朗读内容：直接显示
+      if (voiceSync) message.content = contentBuf
+      delete message.generating
+      delete message.status
+      if (!message.reasoning) delete message.reasoning
       live2dState.value = 'idle'
     }
   }).catch((err) => {
     live2dState.value = 'idle'
-    MESSAGES.value.push({ role: 'system', content: `Error: ${err.message}` })
+    message.content = `Error: ${err.message}`
+    delete message.generating
+    delete message.status
+    if (message.reasoning === '') delete message.reasoning
   })
 }
 </script>
@@ -326,7 +358,11 @@ async function toggleVoiceInput() {
       const audioBlob = new Blob(audioChunks, { type: mediaRecorder?.mimeType || 'audio/webm' })
       try {
         const { text } = await API.transcribeAudio(audioBlob, { language: 'zh' })
-        if (text) input.value += text
+        if (text && typeof text === 'string' && text.trim()) {
+          // 语音识别成功：直接发送（带语音标注前缀）
+          chatStream(`以下是用户的语音输入：【${text.trim()}】`, { voiceInput: true })
+          nextTick().then(scrollToBottom)
+        }
       }
       catch (err: any) {
         const status = err?.response?.status
@@ -380,6 +416,7 @@ function getSupportedMimeType(): string {
           v-for="item, index in MESSAGES" :key="index"
           :role="item.role" :content="item.content"
           :reasoning="item.reasoning" :sender="item.sender"
+          :generating="item.generating" :status="item.status"
           :class="(item.generating && index === MESSAGES.length - 1) || 'border-b'"
         />
       </div>

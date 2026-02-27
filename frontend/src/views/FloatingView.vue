@@ -884,6 +884,7 @@ useEventListener('token', () => {
           v-for="item, index in MESSAGES" :key="index"
           :role="item.role" :content="item.content"
           :reasoning="item.reasoning" :sender="item.sender"
+          :generating="item.generating" :status="item.status"
           :class="(item.generating && index === MESSAGES.length - 1) || 'border-b border-white/6'"
         />
       </div>

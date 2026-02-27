@@ -1071,6 +1071,7 @@ async def chat_stream(request: ChatRequest):
             )
 
             # ====== RAG 记忆召回 + 意图路由 并行执行 ======
+            yield 'data: {"type":"status","text":"记忆召回 + 意图识别"}\n\n'
             rag_section = ""
             route_result = None
 
@@ -1110,6 +1111,7 @@ async def chat_stream(request: ChatRequest):
             await asyncio.gather(_query_rag_stream(), _classify_stream())
 
             # 构建附加知识并追加为 messages 末尾的 system 消息
+            yield 'data: {"type":"status","text":"组织上下文"}\n\n'
             supplement = build_context_supplement(
                 include_skills=True,
                 include_tool_instructions=True,
@@ -1180,6 +1182,7 @@ async def chat_stream(request: ChatRequest):
                 print(f"流式文本切割器初始化失败: {e}")
 
             # ====== Agentic Tool Loop ======
+            yield 'data: {"type":"status","text":"生成回复"}\n\n'
             from .agentic_tool_loop import run_agentic_loop
 
             t_prepare_elapsed = _time.monotonic() - t_api_start
@@ -2441,51 +2444,120 @@ async def _call_nagabusiness(
 
 @app.get("/forum/api/posts")
 async def forum_get_posts(request: Request):
-    return await _call_nagabusiness("GET", "/forum/posts", request, params=dict(request.query_params))
+    return await _call_nagabusiness("GET", "/v1/forum/posts", request, params=dict(request.query_params))
 
 
 @app.get("/forum/api/posts/{post_id}")
 async def forum_get_post(post_id: str, request: Request):
-    return await _call_nagabusiness("GET", f"/forum/posts/{post_id}", request)
+    return await _call_nagabusiness("GET", f"/v1/forum/posts/{post_id}", request)
 
 
 @app.post("/forum/api/posts")
 async def forum_create_post(request: Request):
     body = await request.json()
-    return await _call_nagabusiness("POST", "/forum/posts", request, json_body=body)
+    return await _call_nagabusiness("POST", "/v1/forum/posts", request, json_body=body)
 
 
 @app.post("/forum/api/posts/{post_id}/like")
 async def forum_like_post(post_id: str, request: Request):
-    return await _call_nagabusiness("POST", f"/forum/posts/{post_id}/like", request)
+    return await _call_nagabusiness("POST", f"/v1/forum/posts/{post_id}/like", request)
 
 
 @app.post("/forum/api/posts/{post_id}/comments")
 async def forum_create_comment(post_id: str, request: Request):
     body = await request.json()
-    return await _call_nagabusiness("POST", f"/forum/posts/{post_id}/comments", request, json_body=body)
+    return await _call_nagabusiness("POST", f"/v1/forum/posts/{post_id}/comments", request, json_body=body)
 
 
 @app.post("/forum/api/comments/{comment_id}/like")
 async def forum_like_comment(comment_id: str, request: Request):
-    return await _call_nagabusiness("POST", f"/forum/comments/{comment_id}/like", request)
+    return await _call_nagabusiness("POST", f"/v1/forum/comments/{comment_id}/like", request)
 
 
 @app.get("/forum/api/profile")
 async def forum_get_profile(request: Request):
-    return await _call_nagabusiness("GET", "/forum/profile", request)
+    return await _call_nagabusiness("GET", "/v1/forum/profile", request)
 
 
 @app.get("/forum/api/messages")
 async def forum_get_messages(request: Request):
-    return await _call_nagabusiness("GET", "/forum/messages", request, params=dict(request.query_params))
+    return await _call_nagabusiness("GET", "/v1/forum/messages", request, params=dict(request.query_params))
 
 
 @app.post("/forum/api/friend-request/{req_id}/accept")
 async def forum_accept_friend(req_id: str, request: Request):
-    return await _call_nagabusiness("POST", f"/forum/friend-request/{req_id}/accept", request)
+    return await _call_nagabusiness("POST", f"/v1/forum/friend-request/{req_id}/accept", request)
 
 
 @app.post("/forum/api/friend-request/{req_id}/decline")
 async def forum_decline_friend(req_id: str, request: Request):
-    return await _call_nagabusiness("POST", f"/forum/friend-request/{req_id}/decline", request)
+    return await _call_nagabusiness("POST", f"/v1/forum/friend-request/{req_id}/decline", request)
+
+
+@app.put("/forum/api/posts/{post_id}")
+async def forum_update_post(post_id: str, request: Request):
+    body = await request.json()
+    return await _call_nagabusiness("PUT", f"/v1/forum/posts/{post_id}", request, json_body=body)
+
+
+@app.delete("/forum/api/posts/{post_id}")
+async def forum_delete_post(post_id: str, request: Request):
+    return await _call_nagabusiness("DELETE", f"/v1/forum/posts/{post_id}", request)
+
+
+@app.delete("/forum/api/comments/{comment_id}")
+async def forum_delete_comment(comment_id: str, request: Request):
+    return await _call_nagabusiness("DELETE", f"/v1/forum/comments/{comment_id}", request)
+
+
+@app.get("/forum/api/comments")
+async def forum_list_comments(request: Request):
+    return await _call_nagabusiness("GET", "/v1/forum/comments", request, params=dict(request.query_params))
+
+
+@app.get("/forum/api/boards")
+async def forum_get_boards(request: Request):
+    return await _call_nagabusiness("GET", "/v1/forum/boards", request)
+
+
+@app.post("/forum/api/report")
+async def forum_report(request: Request):
+    body = await request.json()
+    return await _call_nagabusiness("POST", "/v1/forum/report", request, json_body=body)
+
+
+@app.get("/forum/api/friend-requests")
+async def forum_get_friend_requests(request: Request):
+    return await _call_nagabusiness("GET", "/v1/forum/friend-requests", request, params=dict(request.query_params))
+
+
+@app.get("/forum/api/connections")
+async def forum_get_connections(request: Request):
+    return await _call_nagabusiness("GET", "/v1/forum/connections", request)
+
+
+@app.post("/forum/api/messages")
+async def forum_send_message(request: Request):
+    body = await request.json()
+    return await _call_nagabusiness("POST", "/v1/forum/messages", request, json_body=body)
+
+
+@app.put("/forum/api/profile")
+async def forum_update_profile(request: Request):
+    body = await request.json()
+    return await _call_nagabusiness("PUT", "/v1/forum/profile", request, json_body=body)
+
+
+@app.get("/forum/api/notifications")
+async def forum_get_notifications(request: Request):
+    return await _call_nagabusiness("GET", "/v1/forum/notifications", request, params=dict(request.query_params))
+
+
+@app.post("/forum/api/notifications/{notif_id}/read")
+async def forum_mark_notification_read(notif_id: str, request: Request):
+    return await _call_nagabusiness("POST", f"/v1/forum/notifications/{notif_id}/read", request)
+
+
+@app.post("/forum/api/notifications/read-all")
+async def forum_mark_all_notifications_read(request: Request):
+    return await _call_nagabusiness("POST", "/v1/forum/notifications/read-all", request)

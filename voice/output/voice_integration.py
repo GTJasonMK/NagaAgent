@@ -18,9 +18,6 @@ from system.config import config
 
 logger = logging.getLogger("VoiceIntegration")
 
-# 简化的句子结束标点（依赖apiserver的预处理）
-SENTENCE_ENDINGS = ["。", "！", "？", "；", ".", "!", "?", ";"]
-MAX_BUFFER_LENGTH = 100  # 第二层最大缓冲长度（防御性兜底）
 
 class VoiceIntegration:
     """语音集成模块 - 重构版本：依赖apiserver的流式TTS实现"""
@@ -41,10 +38,12 @@ class VoiceIntegration:
         self.audio_temp_dir.mkdir(parents=True, exist_ok=True)
         
         # 流式处理状态
-        self.text_buffer = ""  # 文本缓冲区
         self.is_processing = False  # 是否正在处理
-        self.sentence_queue = Queue()  # 句子队列
-        self.audio_queue = Queue()  # 音频队列
+        self.sentence_queue = Queue()  # 句子队列（extractor 切割好的句子）
+        self.audio_queue = Queue(maxsize=2)  # 音频队列（最多预缓冲 2 个 TTS 片段）
+
+        # 文字-语音同步：首个 TTS 片段就绪后通知 extractor 放行文字显示
+        self.first_tts_ready = threading.Event()
         
         # 播放状态控制
         self.is_playing = False
@@ -97,26 +96,29 @@ class VoiceIntegration:
             self.audio_available = False
 
     def receive_final_text(self, final_text: str):
-        """接收最终完整文本 - 流式处理（保持原始逻辑）"""
+        """接收最终完整文本 - 按句切割后入队"""
         if not config.system.voice_enabled:
             return
-            
+
         if final_text and final_text.strip():
             logger.info(f"接收最终文本: {final_text[:100]}")
-            # 重置状态，为新的对话做准备
             self.reset_processing_state()
-            # 流式处理最终文本
-            self._process_text_stream(final_text)
+            # 按句切割入队
+            import re
+            parts = re.split(r'(?<=[。？！；.?!;])', final_text.strip())
+            for part in parts:
+                part = part.strip()
+                if part:
+                    self.sentence_queue.put(part)
 
     def receive_text_chunk(self, text: str):
-        """接收文本片段 - 流式处理（保持原始逻辑）"""
+        """接收文本片段 - 已由 extractor 切割好，直接入 TTS 队列"""
         if not config.system.voice_enabled:
             return
-            
+
         if text and text.strip():
-            # 流式文本直接处理，不累积
-            logger.debug(f"接收文本片段: {text[:50]}...")
-            self._process_text_stream(text.strip())
+            self.sentence_queue.put(text.strip())
+            logger.debug(f"句子入队: {text[:50]}...")
 
     def receive_audio_url(self, audio_url: str):
         """接收音频URL - 直接播放apiserver生成的音频（保持原始逻辑）"""
@@ -128,49 +130,6 @@ class VoiceIntegration:
             # 直接播放音频
             self._play_audio_from_url(audio_url)
 
-    def _process_text_stream(self, text: str):
-        """处理文本流 - 直接接收apiserver处理好的普通文本（保持原始逻辑）"""
-        if not text:
-            return
-            
-        # 将文本添加到缓冲区
-        self.text_buffer += text
-        
-        # 检查是否形成完整句子（简单的标点检测）
-        self._check_and_queue_sentences()
-        
-    def _check_and_queue_sentences(self):
-        """检查并加入句子队列 - 循环处理所有完整句子"""
-        if not self.text_buffer:
-            return
-
-        # 循环处理：找到所有可切割的句子
-        while self.text_buffer:
-            # 找最早出现的句子结束标点
-            earliest_pos = -1
-            for ending in SENTENCE_ENDINGS:
-                pos = self.text_buffer.find(ending)
-                if pos != -1 and (earliest_pos == -1 or pos < earliest_pos):
-                    earliest_pos = pos
-
-            if earliest_pos != -1:
-                # 找到标点 → 切割
-                end_pos = earliest_pos + 1
-                sentence = self.text_buffer[:end_pos]
-                if sentence.strip():
-                    self.sentence_queue.put(sentence)
-                    logger.info(f"加入句子队列: {sentence[:50]}...")
-                self.text_buffer = self.text_buffer[end_pos:]
-            elif len(self.text_buffer) >= MAX_BUFFER_LENGTH:
-                # 无标点但超长 → 强制切割
-                sentence = self.text_buffer[:MAX_BUFFER_LENGTH]
-                self.sentence_queue.put(sentence)
-                logger.info(f"强制截断加入队列: {sentence[:50]}...")
-                self.text_buffer = self.text_buffer[MAX_BUFFER_LENGTH:]
-            else:
-                # 无标点且未超长 → 等待更多文本
-                break
-        
     def _start_audio_processing(self):
         """启动音频处理线程（保持原始逻辑）"""
         # 线程已经在初始化时启动，这里只需要设置状态
@@ -179,57 +138,48 @@ class VoiceIntegration:
         # 线程会自动从队列中获取句子进行处理
         
     def reset_processing_state(self):
-        """重置处理状态，为新的对话做准备（保持原始逻辑）"""
+        """重置处理状态，为新的对话做准备"""
         # 清空队列
         while not self.sentence_queue.empty():
             try:
                 self.sentence_queue.get_nowait()
             except Empty:
                 break
-                
+
         while not self.audio_queue.empty():
             try:
                 self.audio_queue.get_nowait()
             except Empty:
                 break
-                
-        # 重置状态（不重置is_processing，因为线程是持续运行的）
-        self.text_buffer = ""
-        
+
+        self.first_tts_ready.clear()
         logger.debug("语音处理状态已重置")
         
     def _audio_processing_worker(self):
-        """音频处理工作线程 - 持续运行（保持原始逻辑）"""
+        """音频处理工作线程 - 从 sentence_queue 取句子生成 TTS"""
         logger.info("音频处理工作线程启动")
-        
+
         try:
             while True:
                 try:
-                    # 从句子队列获取句子，增加超时时间
                     sentence = self.sentence_queue.get(timeout=10)
-                        
-                    # 设置处理状态
                     self.is_processing = True
-                    
-                    # 生成音频
+
                     audio_data = self._generate_audio_sync(sentence)
+                    # 首个 TTS 完成（无论成败）→ 通知 extractor 放行文字显示
+                    if not self.first_tts_ready.is_set():
+                        self.first_tts_ready.set()
+                        logger.info("首个 TTS 片段就绪，解除前端文字缓冲")
                     if audio_data:
-                        self.audio_queue.put(audio_data)
+                        self.audio_queue.put(audio_data)  # maxsize=2, 超过则阻塞等待播放消费
                         logger.debug(f"音频生成完成: {sentence[:30]}...")
                     else:
                         logger.warning(f"音频生成失败: {sentence[:30]}...")
-                        
+
                 except Empty:
-                    # 队列为空，检查是否还有待处理的文本
-                    if self.text_buffer.strip():
-                        # 还有未处理的文本，继续等待
-                        continue
-                    else:
-                        # 没有更多文本，继续等待新的句子
-                        logger.debug("音频处理线程等待新的句子...")
-                        self.is_processing = False
-                        continue
-                        
+                    self.is_processing = False
+                    continue
+
         except Exception as e:
             logger.error(f"音频处理工作线程错误: {e}")
             self.is_processing = False
@@ -547,23 +497,12 @@ class VoiceIntegration:
                 time.sleep(5)
 
     def finish_processing(self):
-        """完成处理，清理剩余内容（保持原始逻辑）"""
-        # 处理剩余的文本
-        if self.text_buffer.strip():
-            # 将剩余文本作为最后一个句子处理
-            remaining_text = self.text_buffer.strip()
-            if remaining_text:
-                self.sentence_queue.put(remaining_text)
-                logger.debug(f"处理剩余文本: {remaining_text[:50]}...")
-        
-        # 不再发送完成信号，因为线程是持续运行的
-        # 只需要清空文本缓冲区
-        self.text_buffer = ""
+        """完成处理 — 句子已由 extractor 切割并入队，无需再 flush 缓冲区"""
+        pass
 
     def get_debug_info(self) -> Dict[str, Any]:
         """获取调试信息（保持原始逻辑，更新音频状态标识）"""
         return {
-            "text_buffer_length": len(self.text_buffer),
             "sentence_queue_size": self.sentence_queue.qsize(),
             "audio_queue_size": self.audio_queue.qsize(),
             "is_processing": self.is_processing,
