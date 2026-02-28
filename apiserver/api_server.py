@@ -946,7 +946,7 @@ def install_openclaw_market_item(item_id: str, payload: Optional[Dict[str, Any]]
             if payload and isinstance(payload, dict):
                 api_key = payload.get("api_key") or payload.get("FIRECRAWL_API_KEY")
             _update_mcporter_firecrawl_config(api_key)
-        elif install_type == "template_dir":
+        if install_type == "template_dir":
             template_name = install_spec.get("template")
             if not template_name:
                 raise HTTPException(status_code=500, detail="缺少模板名称")
@@ -1413,14 +1413,18 @@ async def proxy_search(request: Request):
         params = await request.json()
 
     import httpx
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            naga_auth.NAGA_MODEL_URL + "/tools/search",
-            json=params,
-            headers={"Authorization": f"Bearer {naga_auth.get_access_token()}"},
-            timeout=30,
-        )
-    return resp.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                naga_auth.NAGA_MODEL_URL + "/tools/search",
+                json=params,
+                headers={"Authorization": f"Bearer {naga_auth.get_access_token()}"},
+                timeout=30,
+            )
+        return JSONResponse(content=resp.json(), status_code=resp.status_code)
+    except Exception as e:
+        logger.warning(f"搜索代理失败: {e}")
+        return JSONResponse(content={"error": f"搜索服务不可用: {e}"}, status_code=502)
 
 
 @app.get("/memory/stats")
@@ -1915,9 +1919,10 @@ async def proxy_update_check(platform: str = "windows"):
                 return {"has_update": False}
             resp.raise_for_status()
             data = resp.json()
-            # 将相对下载路径拼成完整URL
-            if data.get("download_url"):
-                data["download_url"] = f"{naga_auth.BUSINESS_URL}{data['download_url']}"
+            # 将相对下载路径拼成完整URL（已经是绝对URL则跳过）
+            dl = data.get("download_url")
+            if dl and not dl.startswith(("http://", "https://")):
+                data["download_url"] = f"{naga_auth.BUSINESS_URL}{dl}"
             return data
     except Exception as e:
         logger.warning(f"更新检查失败: {e}")

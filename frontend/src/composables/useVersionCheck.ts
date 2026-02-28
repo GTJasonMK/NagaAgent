@@ -29,6 +29,20 @@ function detectPlatform(): string {
   return 'linux'
 }
 
+/** 简易 semver 比较：remote > local 返回 true */
+function isNewer(remote: string, local: string): boolean {
+  const parse = (v: string) => v.replace(/^v/, '').split('.').map(Number)
+  const r = parse(remote)
+  const l = parse(local)
+  for (let i = 0; i < Math.max(r.length, l.length); i++) {
+    const rv = r[i] ?? 0
+    const lv = l[i] ?? 0
+    if (rv > lv) return true
+    if (rv < lv) return false
+  }
+  return false
+}
+
 export const updateInfo = ref<UpdateInfo | null>(null)
 export const showUpdateDialog = ref(false)
 
@@ -55,7 +69,7 @@ export async function checkForUpdate(): Promise<void> {
       return
 
     const currentVersion = CONFIG.value.system.version ?? '5.1.0'
-    if (data.version === currentVersion)
+    if (data.version === currentVersion || !isNewer(data.version, currentVersion))
       return
 
     updateInfo.value = {

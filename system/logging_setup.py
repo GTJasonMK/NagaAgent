@@ -18,13 +18,8 @@ IS_PACKAGED: bool = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
 
 def _resolve_log_dir() -> Path:
     """推导日志根目录（logs/）"""
-    if IS_PACKAGED:
-        if sys.platform == "win32":
-            base = Path(os.environ.get("APPDATA", Path.home()))
-        else:
-            base = Path.home()
-        return base / "NagaAgent" / "logs"
-    return Path(__file__).resolve().parent.parent / "logs"
+    from system.config import get_data_dir
+    return get_data_dir() / "logs"
 
 
 def setup_logging() -> None:

@@ -16,8 +16,14 @@ from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-OPENCLAW_CONFIG_DIR = Path.home() / ".openclaw"
-OPENCLAW_CONFIG_FILE = OPENCLAW_CONFIG_DIR / "openclaw.json"
+
+def _get_openclaw_paths():
+    from system.config import get_data_dir
+    config_dir = get_data_dir() / "openclaw"
+    return config_dir, config_dir / "openclaw.json"
+
+
+OPENCLAW_CONFIG_DIR, OPENCLAW_CONFIG_FILE = _get_openclaw_paths()
 
 
 def _apply_hooks_compat_patch(config_data: Dict[str, Any]) -> bool:

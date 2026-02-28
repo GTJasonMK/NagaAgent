@@ -64,6 +64,11 @@ const accordionTerminal = useStorage('accordion-config', [])
 const accordionModel = useStorage('accordion-config-model', [])
 const accordionMemory = useStorage('accordion-config-memory', [])
 
+const MODEL_OPTIONS = [
+  { label: '默认', value: 'default' },
+  { label: 'Deepseek-V3.2', value: 'Deepseek-V3.2' },
+]
+
 const toast = useToast()
 
 let _previousUserName = CONFIG.value.ui.user_name
@@ -184,7 +189,13 @@ async function testConnection() {
           <div class="grid gap-4">
             <ConfigItem name="模型名称" description="用于对话的大语言模型">
               <span v-if="isNagaLoggedIn" class="naga-authed">&#10003; 已登陆，无需填写</span>
-              <InputText v-else v-model="CONFIG.api.model" />
+              <Select
+                v-else
+                v-model="CONFIG.api.model"
+                :options="MODEL_OPTIONS"
+                option-label="label"
+                option-value="value"
+              />
             </ConfigItem>
             <ConfigItem name="API 地址" description="大语言模型的 API 地址">
               <span v-if="isNagaLoggedIn" class="naga-authed">&#10003; 已登陆 ({{ nagaUser?.username }})，使用 NagaModel 网关</span>

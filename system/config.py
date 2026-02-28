@@ -40,18 +40,43 @@ def _get_user_data_dir() -> Path:
     """返回用户可写的应用数据目录"""
     if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA", Path.home()))
+        return base / "NagaAgent"
     else:
-        base = Path.home()
-    return base / "NagaAgent"
+        return Path.home() / ".naga"
+
+
+def get_data_dir() -> Path:
+    """返回用户数据根目录（公共接口，供所有模块使用）
+
+    打包和开发模式均使用 ~/.naga（macOS/Linux）或 %APPDATA%/NagaAgent（Windows），
+    确保跨版本升级不丢失用户数据。
+    """
+    d = _get_user_data_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _migrate_config_if_needed(target: Path) -> None:
+    """首次运行时将项目目录下的 config.json 迁移到 ~/.naga/config.json"""
+    if target.exists():
+        return
+    project_config = Path(__file__).parent.parent / "config.json"
+    if project_config.exists():
+        try:
+            import shutil
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(project_config), str(target))
+            print(f"已迁移配置文件: {project_config} → {target}")
+        except Exception as e:
+            print(f"警告：迁移配置文件失败: {e}")
 
 
 def get_config_path() -> str:
-    """返回 config.json 的可写路径"""
-    if IS_PACKAGED:
-        d = _get_user_data_dir()
-        d.mkdir(parents=True, exist_ok=True)
-        return str(d / "config.json")
-    return str(Path(__file__).parent.parent / "config.json")
+    """返回 config.json 的可写路径（始终使用用户数据目录）"""
+    d = get_data_dir()
+    target = d / "config.json"
+    _migrate_config_if_needed(target)
+    return str(target)
 
 from pydantic import BaseModel, Field, field_validator
 from charset_normalizer import from_path
@@ -193,7 +218,7 @@ class SystemConfig(BaseModel):
     ai_name: str = Field(default="娜杰日达", description="AI助手名称")
     active_character: str = Field(default="娜杰日达", description="当前活跃角色名称")
     base_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent, description="项目根目录")
-    log_dir: Path = Field(default_factory=lambda: Path(__file__).parent.parent / "logs", description="日志目录")
+    log_dir: Path = Field(default_factory=lambda: get_data_dir() / "logs", description="日志目录")
     voice_enabled: bool = Field(default=True, description="是否启用语音功能")
     stream_mode: bool = Field(default=True, description="是否启用流式响应")
     debug: bool = Field(default=False, description="是否启用调试模式")
