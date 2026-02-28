@@ -137,7 +137,13 @@ def get_graph():
 
 
 logger = logging.getLogger(__name__)
-QUINTUPLES_FILE = "logs/knowledge_graph/quintuples.json"  # 修改为logs目录下的专门文件夹
+
+def _get_quintuples_file() -> str:
+    from system.config import get_data_dir
+    return str(get_data_dir() / "knowledge_graph" / "quintuples.json")
+
+
+QUINTUPLES_FILE = _get_quintuples_file()
 
 
 def load_quintuples():
