@@ -24,7 +24,8 @@ NAGA_MODEL_URL = BUSINESS_URL + "/v1"
 NAGA_MEMORY_URL = f"{BUSINESS_URL}/api/memory"
 
 # refresh_token 持久化文件（7 天有效，需跨进程重启保留）
-_TOKEN_FILE = Path(__file__).parent.parent / "logs" / ".auth_session"
+from system.config import get_data_dir
+_TOKEN_FILE = get_data_dir() / ".auth_session"
 
 # 模块级认证状态（单用户场景）
 _access_token: Optional[str] = None

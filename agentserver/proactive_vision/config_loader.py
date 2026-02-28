@@ -14,10 +14,9 @@ logger = logging.getLogger(__name__)
 
 def get_config_path() -> Path:
     """获取配置文件路径"""
-    from system.config import config as system_config
+    from system.config import get_data_dir
 
-    # 配置文件放在项目根目录
-    config_path = system_config.system.base_dir / "proactive_vision_config.json"
+    config_path = get_data_dir() / "proactive_vision_config.json"
     return config_path
 
 

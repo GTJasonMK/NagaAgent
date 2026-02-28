@@ -62,12 +62,14 @@ class MessageManager:
             self.max_messages_per_session = 20  # 默认20条消息
             self.persistent_context = True
             self.context_load_days = 3
-            self.log_dir = Path("logs")
+            from system.config import get_data_dir
+            self.log_dir = get_data_dir() / "logs"
             self.ai_name = "娜迦"
             logger.warning("无法导入配置，使用默认历史轮数设置")
 
         # 会话持久化存储目录
-        self.sessions_dir = self.log_dir.parent / "sessions"
+        from system.config import get_data_dir
+        self.sessions_dir = get_data_dir() / "sessions"
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
 
         # 启动时从磁盘加载所有会话

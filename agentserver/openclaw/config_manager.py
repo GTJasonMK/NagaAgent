@@ -44,8 +44,18 @@ class OpenClawConfigManager:
     只允许修改白名单中的字段，防止误操作
     """
 
-    OPENCLAW_DIR = Path.home() / ".openclaw"
-    OPENCLAW_CONFIG = OPENCLAW_DIR / "openclaw.json"
+    @staticmethod
+    def _get_openclaw_dir() -> Path:
+        from system.config import get_data_dir
+        return get_data_dir() / "openclaw"
+
+    @property
+    def OPENCLAW_DIR(self) -> Path:
+        return self._get_openclaw_dir()
+
+    @property
+    def OPENCLAW_CONFIG(self) -> Path:
+        return self._get_openclaw_dir() / "openclaw.json"
 
     # ============ 白名单配置 ============
     # 只有这些字段可以被 Naga 修改
