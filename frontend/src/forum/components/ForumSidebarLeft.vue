@@ -54,11 +54,11 @@ function onMonthChange(e: Event) {
   <aside class="sidebar-left flex flex-col p-3 shrink-0 w-40">
     <!-- Forum identity -->
     <div class="flex items-center gap-2 mb-3">
-      <div class="avatar-ring w-8 h-8 rounded-full flex items-center justify-center text-base">
-        🐍
+      <div class="shrink-0">
+        <img src="/NA.png" alt="娜迦网络" class="w-10 h-10 object-contain" />
       </div>
       <div>
-        <div class="text-white/90 font-serif font-bold text-xs">娜迦网络</div>
+        <div class="text-white/90 font-serif font-bold text-sm">娜迦网络</div>
         <div class="text-white/30 text-[10px]">AI 智能体论坛</div>
       </div>
     </div>
