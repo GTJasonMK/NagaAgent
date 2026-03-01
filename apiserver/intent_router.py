@@ -10,6 +10,7 @@ Nano 意图路由器
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -92,22 +93,22 @@ def _build_tool_list() -> str:
 
 # ── 路由 prompt ──
 
-ROUTER_SYSTEM_PROMPT = """根据用户最新消息，判断需要调用哪些工具。仅输出工具名称，每行一个。不需要工具时只输出 none。
+ROUTER_SYSTEM_PROMPT = """根据用户最新消息，判断需要调用哪些工具。用 {{工具名}} 格式输出，多个工具用空格分隔。不需要工具时输出 {{none}}。
 
 {tool_list}"""
 
 # few-shot 示例（user/assistant 对）
 _FEW_SHOT_EXAMPLES = [
     {"role": "user", "content": "帮我搜一下今天黄金价格"},
-    {"role": "assistant", "content": "openclaw"},
+    {"role": "assistant", "content": "{{openclaw}}"},
     {"role": "user", "content": "你好呀"},
-    {"role": "assistant", "content": "none"},
+    {"role": "assistant", "content": "{{none}}"},
     {"role": "user", "content": "这关怎么打"},
-    {"role": "assistant", "content": "openclaw\ngame_guide"},
+    {"role": "assistant", "content": "{{openclaw}} {{game_guide}}"},
     {"role": "user", "content": "帮我看看屏幕上有什么"},
-    {"role": "assistant", "content": "screen_vision"},
+    {"role": "assistant", "content": "{{screen_vision}}"},
     {"role": "user", "content": "搜一下最近的新闻然后写个总结"},
-    {"role": "assistant", "content": "openclaw"},
+    {"role": "assistant", "content": "{{openclaw}}"},
 ]
 
 
@@ -170,13 +171,28 @@ def _get_router_model_name() -> str:
 
 # ── 解析输出 ──
 
+# 从 {tool_name} 格式中提取工具名的正则
+_TOOL_TAG_RE = re.compile(r"\{(\w+)\}")
+
+
 def _parse_router_output(output: str) -> RouteResult:
-    """解析 nano 的输出，分类到 builtins / mcp / skills"""
+    """解析 nano 的输出，用正则从 {xxx} 中提取工具名"""
     result = RouteResult()
 
-    lines = [line.strip().lower() for line in output.strip().split("\n") if line.strip()]
+    # 优先用正则提取 {xxx} 标签
+    names = [m.group(1).lower() for m in _TOOL_TAG_RE.finditer(output)]
 
-    if not lines or lines == ["none"]:
+    # 兜底：如果没提取到任何标签，按行分割裸文本
+    if not names:
+        names = []
+        for line in output.strip().split("\n"):
+            name = line.strip().lower().lstrip("-•*").strip()
+            if "→" in name:
+                name = name.split("→")[-1].strip()
+            if name:
+                names.append(name)
+
+    if not names or names == ["none"]:
         return result
 
     # 获取已知 MCP 服务名和技能名用于匹配
@@ -194,12 +210,7 @@ def _parse_router_output(output: str) -> RouteResult:
     except Exception:
         pass
 
-    for line in lines:
-        # 去除可能的列表标记、箭头格式（示例污染）
-        name = line.lstrip("-•*").strip()
-        # 处理 nano 可能输出的 "→ openclaw" 或 "用户: xxx → openclaw" 格式
-        if "→" in name:
-            name = name.split("→")[-1].strip()
+    for name in names:
         if name == "none":
             continue
 
