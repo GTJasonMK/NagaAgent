@@ -201,12 +201,9 @@ class OpenClawClient:
     async def _get_client(self) -> httpx.AsyncClient:
         """获取 HTTP 客户端（懒加载，禁用代理确保 localhost 直连）"""
         if self._http_client is None or self._http_client.is_closed:
-            # OpenClaw Gateway 运行在 localhost，必须绕过代理
-            import os
-
-            os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
             self._http_client = httpx.AsyncClient(
                 timeout=self.config.timeout,
+                proxy=None,  # localhost 请求不走系统代理
             )
         return self._http_client
 

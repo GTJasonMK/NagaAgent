@@ -157,7 +157,8 @@ def _get_openclaw_client() -> httpx.AsyncClient:
     global _shared_openclaw_client
     if _shared_openclaw_client is None or _shared_openclaw_client.is_closed:
         _shared_openclaw_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout=150.0, connect=10.0)
+            timeout=httpx.Timeout(timeout=150.0, connect=10.0),
+            proxy=None,  # localhost 请求不走系统代理
         )
     return _shared_openclaw_client
 
