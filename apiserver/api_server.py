@@ -1105,7 +1105,7 @@ async def chat_stream(request: ChatRequest):
             )
 
             # ====== RAG 记忆召回 + 意图路由 并行执行 ======
-            yield 'data: {"type":"status","text":"记忆召回 + 意图识别"}\n\n'
+            yield 'data: {"type":"status","text":"回忆中..."}\n\n'
             rag_section = ""
             route_result = None
 

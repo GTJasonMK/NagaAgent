@@ -706,6 +706,16 @@ def load_character(name: str) -> dict:
         return json.load(f)
 
 
+def get_character_voice() -> Optional[str]:
+    """获取当前角色的 TTS voice 名称，未配置时返回 None"""
+    try:
+        char_name = get_config().system.active_character
+        char_data = load_character(char_name)
+        return char_data.get("voice") or None
+    except Exception:
+        return None
+
+
 def set_active_character(name: str) -> None:
     """切换活跃角色 - 将提示词管理器重定向到角色目录"""
     global _prompt_manager
@@ -816,58 +826,34 @@ def build_context_supplement(
             except ImportError:
                 pass
 
-    # 工具调用指令
+    # 工具调用指令（始终注入工具表，路由只控制 MCP 服务文档的详略）
     tool_instructions = ""
-    if not skip_tools and include_tool_instructions:
+    if include_tool_instructions:
         _sys_prompts = Path(__file__).parent / "prompts"
+        tool_prompt_file = _sys_prompts / "agentic_tool_prompt.txt"
+        raw_template = tool_prompt_file.read_text(encoding="utf-8") if tool_prompt_file.exists() else ""
 
-        if route_result is not None:
-            # ── 按需注入：基础格式 + 选中服务的详细文档 ──
-            base_file = _sys_prompts / "agentic_tool_prompt_base.txt"
-            base_template = base_file.read_text(encoding="utf-8") if base_file.exists() else ""
-
-            services_doc = ""
-            # 注入选中的 MCP 服务文档
-            if route_result.needed_mcp:
+        # 获取 MCP 服务文档（skip_tools 时不注入 MCP 详情，但保留工具表）
+        available_mcp_tools = ""
+        if not skip_tools:
+            if route_result is not None and route_result.needed_mcp:
                 try:
                     from mcpserver.mcp_registry import auto_register_mcp
                     auto_register_mcp()
                     from mcpserver.mcp_manager import get_mcp_manager
-                    mcp_doc = get_mcp_manager().format_services_by_names(route_result.needed_mcp)
-                    if mcp_doc:
-                        services_doc += f"\n\n### 可用MCP服务\n{mcp_doc}"
+                    available_mcp_tools = get_mcp_manager().format_services_by_names(route_result.needed_mcp) or ""
                 except Exception:
                     pass
+            elif route_result is None:
+                try:
+                    from mcpserver.mcp_registry import auto_register_mcp
+                    auto_register_mcp()
+                    from mcpserver.mcp_manager import get_mcp_manager
+                    available_mcp_tools = get_mcp_manager().format_available_services() or "（暂无MCP服务注册）"
+                except Exception:
+                    available_mcp_tools = "（MCP服务未启动）"
 
-                # 注入服务特定调用规则和示例
-                services_file = _sys_prompts / "agentic_tool_prompt_services.txt"
-                if services_file.exists():
-                    services_template = services_file.read_text(encoding="utf-8")
-                    # 替换 MCP 工具占位符
-                    try:
-                        from mcpserver.mcp_manager import get_mcp_manager
-                        available_mcp_tools = get_mcp_manager().format_services_by_names(route_result.needed_mcp) or ""
-                    except Exception:
-                        available_mcp_tools = ""
-                    services_doc = "\n\n" + services_template.replace("{available_mcp_tools}", available_mcp_tools)
-
-            # 需要 openclaw 或 live2d 时，基础模板已包含其格式说明
-            tool_instructions = "\n\n" + base_template + services_doc
-        else:
-            # ── 全量注入（向后兼容） ──
-            try:
-                from mcpserver.mcp_registry import auto_register_mcp
-
-                auto_register_mcp()  # 幂等
-                from mcpserver.mcp_manager import get_mcp_manager
-
-                available_mcp_tools = get_mcp_manager().format_available_services() or "（暂无MCP服务注册）"
-            except Exception:
-                available_mcp_tools = "（MCP服务未启动）"
-
-            # 使用原始完整模板（向后兼容）
-            raw_template = (_sys_prompts / "agentic_tool_prompt.txt").read_text(encoding="utf-8") if (_sys_prompts / "agentic_tool_prompt.txt").exists() else ""
-            tool_instructions = "\n\n" + raw_template.replace("{available_mcp_tools}", available_mcp_tools)
+        tool_instructions = "\n\n" + raw_template.replace("{available_mcp_tools}", available_mcp_tools)
 
     # 激活技能指令
     skill_active_section = ""

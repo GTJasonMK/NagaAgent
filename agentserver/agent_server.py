@@ -273,6 +273,7 @@ async def lifespan(app: FastAPI):
                 logger.info(f"OpenClaw 未检测到安装，使用配置文件: {openclaw_config.gateway_url}")
 
             Modules.openclaw_client = get_openclaw_client(openclaw_config)
+            Modules.openclaw_client.restore_session()
             logger.info(f"OpenClaw客户端初始化完成: {openclaw_config.gateway_url}")
         except Exception as e:
             logger.warning(f"OpenClaw客户端初始化失败（可选功能）: {e}")
@@ -2078,4 +2079,4 @@ if __name__ == "__main__":
     import uvicorn
     from agentserver.config import AGENT_SERVER_PORT
 
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_SERVER_PORT)
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_SERVER_PORT, access_log=False)

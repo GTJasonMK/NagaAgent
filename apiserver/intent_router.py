@@ -10,6 +10,7 @@ Nano 意图路由器
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -24,7 +25,7 @@ logger = logging.getLogger("IntentRouter")
 ROUTER_MODEL = "gpt-4.1-nano"
 
 # 内置工具名称（非 MCP、非 Skill）
-BUILTIN_TOOLS = {"openclaw", "live2d"}
+BUILTIN_TOOLS = {"openclaw", "openclaw_tool", "live2d"}
 
 
 @dataclass
@@ -60,7 +61,7 @@ def _build_tool_list() -> str:
 
     # 内置工具
     lines.append("## 系统内置")
-    lines.append("- openclaw: 联网搜索、浏览器操作、代码执行")
+    lines.append("- openclaw: 联网搜索、网页浏览、代码执行、文件操作、定时任务等（任何需要联网、查资料、搜索的场景都需要）")
     lines.append("- live2d: 虚拟形象表情动作")
     lines.append("")
 
@@ -92,13 +93,33 @@ def _build_tool_list() -> str:
 
 # ── 路由 prompt ──
 
-ROUTER_SYSTEM_PROMPT = """根据对话上下文，判断回复用户最新消息需要调用哪些工具。仅输出工具名称，每行一个，无需解释。如果不需要任何工具（闲聊/简单问答），只输出 none。
+ROUTER_SYSTEM_PROMPT = """根据用户最新消息，判断需要调用哪些工具。用 {{工具名}} 格式输出，多个工具用空格分隔。不需要工具时输出 {{none}}。
 
 {tool_list}"""
 
+# few-shot 示例（user/assistant 对）
+_FEW_SHOT_EXAMPLES = [
+    {"role": "user", "content": "帮我搜一下今天黄金价格"},
+    {"role": "assistant", "content": "{{openclaw}}"},
+    {"role": "user", "content": "你好呀"},
+    {"role": "assistant", "content": "{{none}}"},
+    {"role": "user", "content": "这关怎么打"},
+    {"role": "assistant", "content": "{{game_guide}}"},
+    {"role": "user", "content": "明日方舟初雪有什么技能"},
+    {"role": "assistant", "content": "{{game_guide}}"},
+    {"role": "user", "content": "银灰三技能专三DPS多少"},
+    {"role": "assistant", "content": "{{game_guide}}"},
+    {"role": "user", "content": "崩铁花火怎么配队"},
+    {"role": "assistant", "content": "{{game_guide}}"},
+    {"role": "user", "content": "帮我看看屏幕上有什么"},
+    {"role": "assistant", "content": "{{screen_vision}}"},
+    {"role": "user", "content": "搜一下最近的新闻然后写个总结"},
+    {"role": "assistant", "content": "{{openclaw}}"},
+]
+
 
 def _build_router_messages(messages: List[Dict], user_msg: str) -> List[Dict]:
-    """构建给 nano 的消息列表：系统 prompt + 最近 2-3 轮对话 + 用户最新消息"""
+    """构建给 nano 的消息列表：system + few-shot + 最近对话 + 用户最新消息"""
     system_content = ROUTER_SYSTEM_PROMPT.format(tool_list=_build_tool_list())
 
     # 取最近几轮对话作为上下文（跳过 system 消息）
@@ -123,7 +144,7 @@ def _build_router_messages(messages: List[Dict], user_msg: str) -> List[Dict]:
         user_content = user_msg[:200] + "…" if len(user_msg) > 200 else user_msg
         recent.append({"role": "user", "content": user_content})
 
-    return [{"role": "system", "content": system_content}] + recent
+    return [{"role": "system", "content": system_content}] + _FEW_SHOT_EXAMPLES + recent
 
 
 # ── LLM 调用参数（复用 context_compressor 的模式） ──
@@ -156,13 +177,28 @@ def _get_router_model_name() -> str:
 
 # ── 解析输出 ──
 
+# 从 {tool_name} 格式中提取工具名的正则
+_TOOL_TAG_RE = re.compile(r"\{(\w+)\}")
+
+
 def _parse_router_output(output: str) -> RouteResult:
-    """解析 nano 的输出，分类到 builtins / mcp / skills"""
+    """解析 nano 的输出，用正则从 {xxx} 中提取工具名"""
     result = RouteResult()
 
-    lines = [line.strip().lower() for line in output.strip().split("\n") if line.strip()]
+    # 优先用正则提取 {xxx} 标签
+    names = [m.group(1).lower() for m in _TOOL_TAG_RE.finditer(output)]
 
-    if not lines or lines == ["none"]:
+    # 兜底：如果没提取到任何标签，按行分割裸文本
+    if not names:
+        names = []
+        for line in output.strip().split("\n"):
+            name = line.strip().lower().lstrip("-•*").strip()
+            if "→" in name:
+                name = name.split("→")[-1].strip()
+            if name:
+                names.append(name)
+
+    if not names or names == ["none"]:
         return result
 
     # 获取已知 MCP 服务名和技能名用于匹配
@@ -180,9 +216,7 @@ def _parse_router_output(output: str) -> RouteResult:
     except Exception:
         pass
 
-    for line in lines:
-        # 去除可能的列表标记
-        name = line.lstrip("-").strip()
+    for name in names:
         if name == "none":
             continue
 

@@ -336,6 +336,9 @@ let mediaRecorder: MediaRecorder | null = null
 let audioChunks: Blob[] = []
 
 async function toggleVoiceInput() {
+  if (!CONFIG.value.voice_realtime.enabled)
+    return
+
   if (isRecording.value) {
     stopVoiceInput()
     return
@@ -494,6 +497,7 @@ function getSupportedMimeType(): string {
           placeholder="Type a message..."
         >
         <button
+          v-if="CONFIG.voice_realtime.enabled"
           class="input-icon-btn shrink-0"
           :class="{ recording: isRecording }"
           :title="isRecording ? '停止录音' : '语音输入'"

@@ -15,6 +15,7 @@ API 端点:
 import logging
 import json
 import uuid
+from pathlib import Path
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -200,12 +201,9 @@ class OpenClawClient:
     async def _get_client(self) -> httpx.AsyncClient:
         """获取 HTTP 客户端（懒加载，禁用代理确保 localhost 直连）"""
         if self._http_client is None or self._http_client.is_closed:
-            # OpenClaw Gateway 运行在 localhost，必须绕过代理
-            import os
-
-            os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
             self._http_client = httpx.AsyncClient(
                 timeout=self.config.timeout,
+                proxy=None,  # localhost 请求不走系统代理
             )
         return self._http_client
 
@@ -598,12 +596,15 @@ class OpenClawClient:
                 self._session_info.last_run_id = run_id
             self._session_info.status = status
 
+        # 持久化会话信息
+        self.save_session()
+
     async def _poll_for_reply(
         self,
         session_key: str,
         timeout_seconds: int = 1200,
-        poll_interval: float = 10.0,
-        initial_delay: float = 5.0,
+        poll_interval: float = 3.0,
+        initial_delay: float = 1.0,
     ) -> List[str]:
         """
         轮询 sessions_history 获取 Agent 回复
@@ -662,7 +663,7 @@ class OpenClawClient:
                         )
                     else:
                         stable_count += 1
-                        if stable_count >= 3 and current_count > 0:
+                        if stable_count >= 2 and current_count > 0:
                             logger.info(f"[OpenClaw] 消息已稳定{stable_count}次，共{current_count}条，结束轮询")
                             return replies
 
@@ -1035,6 +1036,42 @@ class OpenClawClient:
     def get_default_session_key(self) -> Optional[str]:
         """获取默认会话标识"""
         return self._default_session_key
+
+    # ============ 会话持久化 ============
+
+    _SESSION_FILE = Path.home() / "NagaAgent" / "openclaw_session.json"
+
+    def save_session(self) -> None:
+        """将当前 session_key 持久化到磁盘，重启后可恢复"""
+        if not self._default_session_key:
+            return
+        try:
+            self._SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+            data = {"session_key": self._default_session_key}
+            if self._session_info:
+                data["last_activity"] = self._session_info.last_activity
+                data["message_count"] = self._session_info.message_count
+            self._SESSION_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            logger.debug(f"[OpenClaw] 会话已持久化: {self._default_session_key}")
+        except Exception as e:
+            logger.warning(f"[OpenClaw] 会话持久化失败: {e}")
+
+    def restore_session(self) -> bool:
+        """从磁盘恢复之前的 session_key（仅在尚未初始化时生效）"""
+        if self._default_session_key is not None:
+            return False  # 已有会话，跳过
+        try:
+            if not self._SESSION_FILE.exists():
+                return False
+            data = json.loads(self._SESSION_FILE.read_text(encoding="utf-8"))
+            session_key = data.get("session_key")
+            if session_key:
+                self._default_session_key = session_key
+                logger.info(f"[OpenClaw] 已恢复持久化会话: {session_key}")
+                return True
+        except Exception as e:
+            logger.warning(f"[OpenClaw] 恢复会话失败: {e}")
+        return False
 
     # ============ 健康检查 ============
 

@@ -67,5 +67,6 @@ def setup_logging() -> None:
     logging.getLogger("agentserver.openclaw").addHandler(openclaw_handler)
 
     # 抑制第三方库噪音
-    for name in ["httpcore", "httpx", "urllib3", "asyncio", "LiteLLM"]:
+    for name in ["httpcore", "httpx", "urllib3", "asyncio", "LiteLLM",
+                  "uvicorn.access", "openai._base_client"]:
         logging.getLogger(name).setLevel(logging.WARNING)

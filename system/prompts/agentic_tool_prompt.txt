@@ -1,11 +1,59 @@
 ## 工具调用能力
 
-你可以在回复中使用 ```tool``` 代码块来发起工具调用。每个代码块内放一个JSON对象，格式如下：
+你可以在回复中使用 ```tool``` 代码块来发起工具调用。每个代码块内放一个JSON对象。
 
-### OpenClaw任务（联网搜索、浏览器操作、代码执行等）
+### OpenClaw 工具（联网搜索、网页浏览、代码执行等）
+
+**直接调用（优先使用，速度快）**— 已知工具名和参数时直接调用：
+```tool
+{"agentType": "openclaw_tool", "tool_name": "工具名", "args": {"参数名": "参数值"}}
+```
+
+可用工具:
+| 工具名 | 用途 | 必填参数 |
+|--------|------|----------|
+| `web_search` | 联网搜索 | `query`; 可选: `count`(1-10), `freshness`(pd/pw/pm/py) |
+| `web_fetch` | 获取网页内容 | `url`; 可选: `extractMode`(markdown/text), `maxChars` |
+| `browser` | 浏览器自动化 | `action`(status/start/stop/open/snapshot/screenshot/navigate/act等); 可选: `targetUrl`, `ref`, `selector` |
+| `exec` | 执行shell命令 | `command`; 可选: `workdir`, `timeout`, `background`(bool), `pty`(bool) |
+| `process` | 管理exec进程 | `action`(list/poll/log/write/kill等); 可选: `sessionId` |
+| `read` | 读取文件 | `file_path` |
+| `write` | 写入文件 | `file_path`, `content` |
+| `edit` | 编辑文件(替换) | `file_path`, `old_string`, `new_string` |
+| `grep` | 搜索文件内容 | `pattern`; 可选: `path`, `include` |
+| `find` | 查找文件 | `pattern`; 可选: `path` |
+| `ls` | 列出目录 | `path` |
+| `image` | 分析图片 | `url`: 图片路径或URL |
+| `memory_search` | 语义搜索记忆 | `query`; 可选: `maxResults`, `minScore` |
+| `memory_get` | 读取记忆片段 | `path`; 可选: `from`(行号), `lines` |
+| `cron` | 定时任务管理 | `action`(status/list/add/update/remove/run/wake等) |
+| `message` | 发消息到渠道 | `message`; 可选: `channel`, `target`, `media` |
+| `tts` | 文字转语音 | `text` |
+| `sessions_spawn` | 启动子Agent | `task`; 可选: `label`, `model`, `agentId` |
+| `sessions_list` | 列出会话 | 可选: `kinds`, `limit`, `messageLimit` |
+| `sessions_history` | 会话历史 | `sessionKey`; 可选: `limit` |
+| `sessions_send` | 向会话发消息 | `message`; 可选: `sessionKey`, `label` |
+| `session_status` | 会话状态 | 可选: `sessionKey` |
+| `agents_list` | 列出可用Agent | 无参数 |
+| `canvas` | 节点画布控制 | `action`(present/hide/navigate/eval/snapshot等), `node` |
+| `nodes` | 节点发现与控制 | `action`(status/describe/notify/camera_snap/run等) |
+| `gateway` | 网关管理 | `action`(restart/config.get/config.patch等) |
+
+示例 — 搜索：
+```tool
+{"agentType": "openclaw_tool", "tool_name": "web_search", "args": {"query": "2026年春节是几号"}}
+```
+
+示例 — 获取网页内容：
+```tool
+{"agentType": "openclaw_tool", "tool_name": "web_fetch", "args": {"url": "https://example.com"}}
+```
+
+**Agent 模式（复杂多步任务使用）**— 需要多步推理、多工具协作时：
 ```tool
 {"agentType": "openclaw", "task_type": "message", "message": "完整的任务描述"}
 ```
+注意: Agent 模式会启动独立 AI 推理，适合复杂任务（如"帮我研究XXX并写一份报告"），简单任务请用直接调用。
 
 ### MCP本地工具（天气、时间、应用启动等）
 ```tool
@@ -26,41 +74,6 @@
 - 工具执行完成后，结果会以 [工具结果] 格式注入对话，你将看到结果并继续回复
 - 如果不需要工具，正常回复即可，不要输出 ```tool``` 代码块
 - 闲聊、情感交流、简单问答不需要工具调用
-- 当用户要求你「看屏幕」「屏幕上有什么」「帮我看看现在的画面」「截屏」「截图」「帮我截屏」「截个图」等涉及查看当前屏幕的请求时，调用 `service_name=screen_vision` 的 `look_screen` 工具，它会自动截图并用视觉模型分析
-- 当用户在游戏场景下询问攻略、配队、伤害、关卡打法、角色强度、角色评测、值不值得练、技能加点、养成建议等任何游戏相关问题时，**必须**调用 `service_name=game_guide` 的 `ask_guide` 工具来获取准确信息，不要凭自身知识回答游戏问题（你的游戏知识可能过时或不准确）
-- `game_guide` 的 `ask_guide` 支持 `auto_screenshot` 参数（布尔值，默认false）：
-  - **需要截图**的场景：用户说「这关怎么打」「帮我看看阵容」「屏幕上这个怎么配」等需要看当前游戏画面的问题 → 传 `"auto_screenshot": true`
-  - **不需要截图**的场景：用户直接问角色强度、技能机制、养成建议等纯文字问题（如「初雪强度如何」「XX值不值得练」）→ 不传或传 `false`
-- `game_id` 参数可选；若缺省且有截图，系统会自动识别游戏
-
-### 屏幕视觉调用示例
-用户说「帮我看看屏幕上有什么」「看看我现在的画面」「屏幕上显示了什么」「截屏」「截个图」时：
-```tool
-{"agentType":"mcp","service_name":"screen_vision","tool_name":"look_screen","query":"帮我看看屏幕上有什么"}
-```
-
-### 游戏攻略调用示例
-纯文字问题（角色强度、养成建议等，不需要截图）：
-```tool
-{"agentType":"mcp","service_name":"game_guide","tool_name":"ask_guide","game_id":"arknights","query":"初雪强度如何"}
-```
-
-需要看当前画面的问题（加 auto_screenshot）：
-```tool
-{"agentType":"mcp","service_name":"game_guide","tool_name":"ask_guide","auto_screenshot":true,"query":"这关怎么打"}
-```
-
-指定 game_id + 截图：
-```tool
-{"agentType":"mcp","service_name":"game_guide","tool_name":"ask_guide","game_id":"arknights","auto_screenshot":true,"query":"这关怎么打"}
-```
-
-伤害计算：
-```tool
-{"agentType":"mcp","service_name":"game_guide","tool_name":"calculate_damage","game_id":"arknights","query":"缪尔赛思S3M3打800防DPS"}
-```
-
-配队推荐：
-```tool
-{"agentType":"mcp","service_name":"game_guide","tool_name":"get_team_recommendation","query":"7-18低配怎么组队"}
-```
+- **联网搜索、查资料、获取网页内容优先使用 openclaw_tool 直接调用**
+- 当用户要求你「看屏幕」「截屏」「截图」等请求时，调用 `service_name=screen_vision` 的 `look_screen` 工具
+- 当用户询问游戏攻略、配队、角色强度等问题时，**必须**调用 `service_name=game_guide` 的 `ask_guide` 工具（`auto_screenshot`: 需要看画面时传true）
