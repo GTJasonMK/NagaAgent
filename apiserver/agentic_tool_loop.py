@@ -411,19 +411,33 @@ async def _execute_openclaw_tool_call(call: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(result_content, dict) and "result" in result_content:
                 result_content = result_content["result"]
 
-            # 检查 OpenClaw 工具级别的 isError 标记
-            if isinstance(result_content, dict) and result_content.get("isError"):
+            # 检查 OpenClaw 工具级别的错误（isError 标记 或 error 字段）
+            if isinstance(result_content, dict) and (result_content.get("isError") or "error" in result_content):
                 readable = _extract_openclaw_tool_result(result_content)
-                logger.error(f"[AgenticLoop] OpenClaw工具内部错误: {tool_name}, result={readable[:300]}")
+                logger.error(f"[AgenticLoop] OpenClaw工具错误: {tool_name}, result={readable[:300]}")
                 return {
                     "tool_call": call, "result": f"工具执行错误: {readable}",
                     "status": "error", "service_name": "openclaw_tool", "tool_name": tool_name,
                 }
 
             readable = _extract_openclaw_tool_result(result_content)
+
+            # 检测嵌套在 content text 中的 JSON 错误（如 {"error": "missing_brave_api_key", ...}）
+            if readable.lstrip().startswith("{"):
+                try:
+                    parsed = json.loads(readable)
+                    if isinstance(parsed, dict) and "error" in parsed:
+                        error_msg = parsed.get("message") or str(parsed["error"])
+                        logger.error(f"[AgenticLoop] OpenClaw工具错误: {tool_name}, error={error_msg}")
+                        return {
+                            "tool_call": call, "result": f"工具执行错误: {error_msg}",
+                            "status": "error", "service_name": "openclaw_tool", "tool_name": tool_name,
+                        }
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
             logger.info(f"[AgenticLoop] OpenClaw直接工具调用完成: {tool_name} 耗时 {elapsed:.2f}s, 结果长度={len(readable)}")
-            logger.debug(f"[AgenticLoop] OpenClaw工具原始返回: {json.dumps(result_content, ensure_ascii=False)[:500]}")
-            logger.debug(f"[AgenticLoop] OpenClaw工具提取结果: {readable[:300]}")
+            logger.info(f"[AgenticLoop] OpenClaw工具结果预览: {readable[:300]}")
             return {
                 "tool_call": call, "result": readable,
                 "status": "success", "service_name": "openclaw_tool", "tool_name": tool_name,

@@ -2079,4 +2079,4 @@ if __name__ == "__main__":
     import uvicorn
     from agentserver.config import AGENT_SERVER_PORT
 
-    uvicorn.run(app, host="0.0.0.0", port=AGENT_SERVER_PORT)
+    uvicorn.run(app, host="0.0.0.0", port=AGENT_SERVER_PORT, access_log=False)
