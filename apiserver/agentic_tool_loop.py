@@ -11,6 +11,8 @@ import re
 import time as _time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
+import httpx
+
 from system.config import get_config, get_server_port
 
 logger = logging.getLogger(__name__)
@@ -144,6 +146,47 @@ def parse_tool_calls_from_text(text: str) -> Tuple[str, List[Dict[str, Any]]]:
 
 
 # ---------------------------------------------------------------------------
+# OpenClaw 共享客户端与可用性预检
+# ---------------------------------------------------------------------------
+
+_shared_openclaw_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_openclaw_client() -> httpx.AsyncClient:
+    """获取或创建共享的 httpx 客户端（避免每次调用都新建连接）"""
+    global _shared_openclaw_client
+    if _shared_openclaw_client is None or _shared_openclaw_client.is_closed:
+        _shared_openclaw_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout=150.0, connect=10.0)
+        )
+    return _shared_openclaw_client
+
+
+_openclaw_available: Optional[bool] = None
+_openclaw_check_time: float = 0.0
+_OPENCLAW_CHECK_TTL = 30.0
+
+
+async def _check_openclaw_available() -> bool:
+    """检查 OpenClaw 服务是否可用（带 TTL 缓存，避免频繁探测）"""
+    global _openclaw_available, _openclaw_check_time
+    now = _time.monotonic()
+    if _openclaw_available is not None and (now - _openclaw_check_time) < _OPENCLAW_CHECK_TTL:
+        return _openclaw_available
+    try:
+        client = _get_openclaw_client()
+        resp = await client.get(
+            f"http://localhost:{get_server_port('agent_server')}/openclaw/health",
+            timeout=3.0,
+        )
+        _openclaw_available = resp.status_code == 200 and resp.json().get("success", False)
+    except Exception:
+        _openclaw_available = False
+    _openclaw_check_time = now
+    return _openclaw_available
+
+
+# ---------------------------------------------------------------------------
 # 工具执行
 # ---------------------------------------------------------------------------
 
@@ -202,9 +245,7 @@ async def _execute_mcp_call(call: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _execute_openclaw_call(call: Dict[str, Any], session_id: str) -> Dict[str, Any]:
-    """执行单个OpenClaw调用"""
-    import httpx
-
+    """执行单个OpenClaw调用（Agent 模式，通过 /hooks/agent 走二次 LLM）"""
     message = call.get("message", "")
     task_type = call.get("task_type", "message")
 
@@ -212,6 +253,15 @@ async def _execute_openclaw_call(call: Dict[str, Any], session_id: str) -> Dict[
         return {
             "tool_call": call,
             "result": "缺少message字段",
+            "status": "error",
+            "service_name": "openclaw",
+            "tool_name": task_type,
+        }
+
+    if not await _check_openclaw_available():
+        return {
+            "tool_call": call,
+            "result": "OpenClaw 服务当前不可用，请稍后重试",
             "status": "error",
             "service_name": "openclaw",
             "tool_name": task_type,
@@ -231,46 +281,46 @@ async def _execute_openclaw_call(call: Dict[str, Any], session_id: str) -> Dict[
         payload["message"] = f"[提醒 在 {call.get('at')} 后] {message}"
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(timeout=150.0, connect=10.0)) as client:
-            response = await client.post(
-                f"http://localhost:{get_server_port('agent_server')}/openclaw/send",
-                json=payload,
-            )
-            if response.status_code == 200:
-                result_data = response.json()
-                # 先检查 agent_server 返回的 success 标记
-                if not result_data.get("success", True):
-                    error_msg = result_data.get("error") or "OpenClaw任务执行失败"
-                    return {
-                        "tool_call": call,
-                        "result": f"联网搜索失败: {error_msg}",
-                        "status": "error",
-                        "service_name": "openclaw",
-                        "tool_name": task_type,
-                    }
-                # agent_server 返回两个字段：replies(列表，异步轮询时填充) 和 reply(字符串，同步完成时填充)
-                replies = result_data.get("replies") or []
-                if replies:
-                    combined = "\n".join(replies)
-                elif result_data.get("reply"):
-                    combined = result_data["reply"]
-                else:
-                    combined = "任务已提交，暂无返回结果"
+        client = _get_openclaw_client()
+        response = await client.post(
+            f"http://localhost:{get_server_port('agent_server')}/openclaw/send",
+            json=payload,
+        )
+        if response.status_code == 200:
+            result_data = response.json()
+            # 先检查 agent_server 返回的 success 标记
+            if not result_data.get("success", True):
+                error_msg = result_data.get("error") or "OpenClaw任务执行失败"
                 return {
                     "tool_call": call,
-                    "result": combined,
-                    "status": "success",
-                    "service_name": "openclaw",
-                    "tool_name": task_type,
-                }
-            else:
-                return {
-                    "tool_call": call,
-                    "result": f"HTTP {response.status_code}: {response.text[:200]}",
+                    "result": f"联网搜索失败: {error_msg}",
                     "status": "error",
                     "service_name": "openclaw",
                     "tool_name": task_type,
                 }
+            # agent_server 返回两个字段：replies(列表，异步轮询时填充) 和 reply(字符串，同步完成时填充)
+            replies = result_data.get("replies") or []
+            if replies:
+                combined = "\n".join(replies)
+            elif result_data.get("reply"):
+                combined = result_data["reply"]
+            else:
+                combined = "任务已提交，暂无返回结果"
+            return {
+                "tool_call": call,
+                "result": combined,
+                "status": "success",
+                "service_name": "openclaw",
+                "tool_name": task_type,
+            }
+        else:
+            return {
+                "tool_call": call,
+                "result": f"HTTP {response.status_code}: {response.text[:200]}",
+                "status": "error",
+                "service_name": "openclaw",
+                "tool_name": task_type,
+            }
     except Exception as e:
         logger.error(f"[AgenticLoop] OpenClaw调用失败: {e}")
         return {
@@ -282,9 +332,88 @@ async def _execute_openclaw_call(call: Dict[str, Any], session_id: str) -> Dict[
         }
 
 
+async def _execute_openclaw_tool_call(call: Dict[str, Any]) -> Dict[str, Any]:
+    """直接调用 OpenClaw 工具，跳过 Agent LLM（通过 /tools/invoke）"""
+    tool_name = call.get("tool_name", "")
+    tool_args = call.get("args", {})
+
+    if not tool_name:
+        return {
+            "tool_call": call, "result": "缺少 tool_name",
+            "status": "error", "service_name": "openclaw_tool", "tool_name": "unknown",
+        }
+
+    if not await _check_openclaw_available():
+        return {
+            "tool_call": call, "result": "OpenClaw 服务当前不可用，请稍后重试",
+            "status": "error", "service_name": "openclaw_tool", "tool_name": tool_name,
+        }
+
+    try:
+        client = _get_openclaw_client()
+        t0 = _time.monotonic()
+        response = await client.post(
+            f"http://localhost:{get_server_port('agent_server')}/openclaw/tools/invoke",
+            json={"tool": tool_name, "args": tool_args},
+        )
+        elapsed = _time.monotonic() - t0
+        if response.status_code == 200:
+            result_data = response.json()
+            # 先检查 agent_server 层面的 success 标记（如 tool_not_found）
+            if not result_data.get("success", True):
+                error_msg = result_data.get("error") or result_data.get("detail") or "工具调用失败"
+                return {
+                    "tool_call": call, "result": f"调用失败: {error_msg}",
+                    "status": "error", "service_name": "openclaw_tool", "tool_name": tool_name,
+                }
+            # agent_server 返回 { success: true, result: { ok, result: { content: [...] } } }
+            # invoke_tool 包了一层，需解开两层 result 才能到 OpenClaw 的原始工具输出
+            result_content = result_data.get("result", result_data)
+            if isinstance(result_content, dict) and "result" in result_content:
+                result_content = result_content["result"]
+            readable = _extract_openclaw_tool_result(result_content)
+            logger.info(f"[AgenticLoop] OpenClaw直接工具调用完成: {tool_name} 耗时 {elapsed:.2f}s")
+            return {
+                "tool_call": call, "result": readable,
+                "status": "success", "service_name": "openclaw_tool", "tool_name": tool_name,
+            }
+        else:
+            return {
+                "tool_call": call, "result": f"调用失败: HTTP {response.status_code} - {response.text[:200]}",
+                "status": "error", "service_name": "openclaw_tool", "tool_name": tool_name,
+            }
+    except Exception as e:
+        logger.error(f"[AgenticLoop] OpenClaw直接工具调用失败: {tool_name}, error={e}")
+        return {
+            "tool_call": call, "result": f"调用异常: {e}",
+            "status": "error", "service_name": "openclaw_tool", "tool_name": tool_name,
+        }
+
+
+def _extract_openclaw_tool_result(result: Any) -> str:
+    """从 OpenClaw /tools/invoke 返回值中提取可读文本"""
+    if isinstance(result, str):
+        return result
+    if isinstance(result, dict):
+        # 标准格式: { content: [{ type: "text", text: "..." }] }
+        content = result.get("content", [])
+        if isinstance(content, list):
+            texts = []
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    texts.append(item.get("text", ""))
+            if texts:
+                return "\n".join(texts)
+        # 备选: 直接有 text 字段
+        if "text" in result:
+            return str(result["text"])
+        # 兜底: JSON dump
+        return json.dumps(result, ensure_ascii=False)
+    return str(result)
+
+
 async def _send_live2d_actions(live2d_calls: List[Dict[str, Any]], session_id: str):
     """Fire-and-forget发送Live2D动作到UI"""
-    import httpx
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(timeout=5.0)) as client:
@@ -322,6 +451,8 @@ async def execute_tool_calls(tool_calls: List[Dict[str, Any]], session_id: str) 
             tasks.append(_execute_mcp_call(call))
         elif agent_type == "openclaw":
             tasks.append(_execute_openclaw_call(call, session_id))
+        elif agent_type == "openclaw_tool":
+            tasks.append(_execute_openclaw_tool_call(call))
         else:
             logger.warning(f"[AgenticLoop] 未知agentType: {agent_type}, 跳过: {call}")
 
