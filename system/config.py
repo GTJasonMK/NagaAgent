@@ -816,31 +816,32 @@ def build_context_supplement(
             except ImportError:
                 pass
 
-    # 工具调用指令
+    # 工具调用指令（始终注入工具表，路由只控制 MCP 服务文档的详略）
     tool_instructions = ""
-    if not skip_tools and include_tool_instructions:
+    if include_tool_instructions:
         _sys_prompts = Path(__file__).parent / "prompts"
         tool_prompt_file = _sys_prompts / "agentic_tool_prompt.txt"
         raw_template = tool_prompt_file.read_text(encoding="utf-8") if tool_prompt_file.exists() else ""
 
-        # 获取 MCP 服务文档
+        # 获取 MCP 服务文档（skip_tools 时不注入 MCP 详情，但保留工具表）
         available_mcp_tools = ""
-        if route_result is not None and route_result.needed_mcp:
-            try:
-                from mcpserver.mcp_registry import auto_register_mcp
-                auto_register_mcp()
-                from mcpserver.mcp_manager import get_mcp_manager
-                available_mcp_tools = get_mcp_manager().format_services_by_names(route_result.needed_mcp) or ""
-            except Exception:
-                pass
-        elif route_result is None:
-            try:
-                from mcpserver.mcp_registry import auto_register_mcp
-                auto_register_mcp()
-                from mcpserver.mcp_manager import get_mcp_manager
-                available_mcp_tools = get_mcp_manager().format_available_services() or "（暂无MCP服务注册）"
-            except Exception:
-                available_mcp_tools = "（MCP服务未启动）"
+        if not skip_tools:
+            if route_result is not None and route_result.needed_mcp:
+                try:
+                    from mcpserver.mcp_registry import auto_register_mcp
+                    auto_register_mcp()
+                    from mcpserver.mcp_manager import get_mcp_manager
+                    available_mcp_tools = get_mcp_manager().format_services_by_names(route_result.needed_mcp) or ""
+                except Exception:
+                    pass
+            elif route_result is None:
+                try:
+                    from mcpserver.mcp_registry import auto_register_mcp
+                    auto_register_mcp()
+                    from mcpserver.mcp_manager import get_mcp_manager
+                    available_mcp_tools = get_mcp_manager().format_available_services() or "（暂无MCP服务注册）"
+                except Exception:
+                    available_mcp_tools = "（MCP服务未启动）"
 
         tool_instructions = "\n\n" + raw_template.replace("{available_mcp_tools}", available_mcp_tools)
 
