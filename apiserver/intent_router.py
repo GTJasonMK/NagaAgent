@@ -119,8 +119,8 @@ def _build_router_messages(messages: List[Dict], user_msg: str) -> List[Dict]:
     # 取最近几轮对话作为上下文（跳过 system 消息）
     recent = []
     non_system = [m for m in messages if m.get("role") != "system"]
-    # 取最后 6 条（约 3 轮对话）
-    for m in non_system[-6:]:
+    # 取最后 4 条（约 2 轮对话）
+    for m in non_system[-4:]:
         content = m.get("content", "")
         if isinstance(content, list):
             # 多模态消息，提取文本部分
