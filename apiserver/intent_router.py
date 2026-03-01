@@ -94,19 +94,25 @@ def _build_tool_list() -> str:
 
 ROUTER_SYSTEM_PROMPT = """根据用户最新消息，判断需要调用哪些工具。仅输出工具名称，每行一个。不需要工具时只输出 none。
 
-{tool_list}
+{tool_list}"""
 
-示例:
-用户: 帮我搜一下今天黄金价格 → openclaw
-用户: 这关怎么打 → openclaw
-game_guide
-用户: 你好呀 → none
-用户: 帮我看看屏幕 → screen_vision
-用户: 搜一下最近的新闻然后总结 → openclaw"""
+# few-shot 示例（user/assistant 对）
+_FEW_SHOT_EXAMPLES = [
+    {"role": "user", "content": "帮我搜一下今天黄金价格"},
+    {"role": "assistant", "content": "openclaw"},
+    {"role": "user", "content": "你好呀"},
+    {"role": "assistant", "content": "none"},
+    {"role": "user", "content": "这关怎么打"},
+    {"role": "assistant", "content": "openclaw\ngame_guide"},
+    {"role": "user", "content": "帮我看看屏幕上有什么"},
+    {"role": "assistant", "content": "screen_vision"},
+    {"role": "user", "content": "搜一下最近的新闻然后写个总结"},
+    {"role": "assistant", "content": "openclaw"},
+]
 
 
 def _build_router_messages(messages: List[Dict], user_msg: str) -> List[Dict]:
-    """构建给 nano 的消息列表：系统 prompt + 最近 2-3 轮对话 + 用户最新消息"""
+    """构建给 nano 的消息列表：system + few-shot + 最近对话 + 用户最新消息"""
     system_content = ROUTER_SYSTEM_PROMPT.format(tool_list=_build_tool_list())
 
     # 取最近几轮对话作为上下文（跳过 system 消息）
@@ -131,7 +137,7 @@ def _build_router_messages(messages: List[Dict], user_msg: str) -> List[Dict]:
         user_content = user_msg[:200] + "…" if len(user_msg) > 200 else user_msg
         recent.append({"role": "user", "content": user_content})
 
-    return [{"role": "system", "content": system_content}] + recent
+    return [{"role": "system", "content": system_content}] + _FEW_SHOT_EXAMPLES + recent
 
 
 # ── LLM 调用参数（复用 context_compressor 的模式） ──
