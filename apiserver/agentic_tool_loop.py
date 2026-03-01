@@ -179,7 +179,12 @@ async def _check_openclaw_available() -> bool:
             f"http://localhost:{get_server_port('agent_server')}/openclaw/health",
             timeout=3.0,
         )
-        _openclaw_available = resp.status_code == 200 and resp.json().get("success", False)
+        data = resp.json()
+        _openclaw_available = (
+            resp.status_code == 200
+            and data.get("success", False)
+            and data.get("health", {}).get("status") == "healthy"
+        )
     except Exception:
         _openclaw_available = False
     _openclaw_check_time = now
@@ -362,6 +367,7 @@ async def _execute_openclaw_tool_call(call: Dict[str, Any]) -> Dict[str, Any]:
             # 先检查 agent_server 层面的 success 标记（如 tool_not_found）
             if not result_data.get("success", True):
                 error_msg = result_data.get("error") or result_data.get("detail") or "工具调用失败"
+                logger.error(f"[AgenticLoop] OpenClaw工具返回失败: {tool_name}, error={error_msg}")
                 return {
                     "tool_call": call, "result": f"调用失败: {error_msg}",
                     "status": "error", "service_name": "openclaw_tool", "tool_name": tool_name,
@@ -378,6 +384,7 @@ async def _execute_openclaw_tool_call(call: Dict[str, Any]) -> Dict[str, Any]:
                 "status": "success", "service_name": "openclaw_tool", "tool_name": tool_name,
             }
         else:
+            logger.error(f"[AgenticLoop] OpenClaw直接工具调用HTTP错误: {tool_name}, status={response.status_code}, body={response.text[:200]}")
             return {
                 "tool_call": call, "result": f"调用失败: HTTP {response.status_code} - {response.text[:200]}",
                 "status": "error", "service_name": "openclaw_tool", "tool_name": tool_name,
