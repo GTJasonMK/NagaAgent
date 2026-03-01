@@ -165,30 +165,59 @@ def _get_openclaw_client() -> httpx.AsyncClient:
 _openclaw_available: Optional[bool] = None
 _openclaw_check_time: float = 0.0
 _OPENCLAW_CHECK_TTL = 30.0
+_openclaw_start_attempted: bool = False  # 每次进程生命周期内只自动启动一次
 
 
 async def _check_openclaw_available() -> bool:
-    """检查 OpenClaw 服务是否可用（带 TTL 缓存，避免频繁探测）"""
-    global _openclaw_available, _openclaw_check_time
+    """检查 OpenClaw 服务是否可用，不可用时尝试自动启动"""
+    global _openclaw_available, _openclaw_check_time, _openclaw_start_attempted
     now = _time.monotonic()
     if _openclaw_available is not None and (now - _openclaw_check_time) < _OPENCLAW_CHECK_TTL:
         return _openclaw_available
+
+    agent_base = f"http://localhost:{get_server_port('agent_server')}"
+    client = _get_openclaw_client()
+
+    _openclaw_available = await _probe_openclaw_health(client, agent_base)
+
+    # 不可用且还没尝试过自动启动 → 启动一次
+    if not _openclaw_available and not _openclaw_start_attempted:
+        _openclaw_start_attempted = True
+        logger.info("[AgenticLoop] OpenClaw gateway 不可用，尝试自动启动...")
+        try:
+            resp = await client.post(f"{agent_base}/openclaw/gateway/start", timeout=30.0)
+            if resp.status_code == 200:
+                logger.info("[AgenticLoop] OpenClaw gateway 启动请求已发送，等待就绪...")
+                # 轮询等待 gateway 就绪（最多 15s）
+                for _ in range(5):
+                    await asyncio.sleep(3)
+                    if await _probe_openclaw_health(client, agent_base):
+                        _openclaw_available = True
+                        logger.info("[AgenticLoop] OpenClaw gateway 已就绪")
+                        break
+                if not _openclaw_available:
+                    logger.warning("[AgenticLoop] OpenClaw gateway 启动超时，仍不可用")
+            else:
+                logger.warning(f"[AgenticLoop] OpenClaw gateway 启动失败: HTTP {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"[AgenticLoop] OpenClaw gateway 自动启动异常: {e}")
+
+    _openclaw_check_time = _time.monotonic()
+    return _openclaw_available
+
+
+async def _probe_openclaw_health(client: httpx.AsyncClient, agent_base: str) -> bool:
+    """探测 OpenClaw gateway 是否健康"""
     try:
-        client = _get_openclaw_client()
-        resp = await client.get(
-            f"http://localhost:{get_server_port('agent_server')}/openclaw/health",
-            timeout=3.0,
-        )
+        resp = await client.get(f"{agent_base}/openclaw/health", timeout=3.0)
         data = resp.json()
-        _openclaw_available = (
+        return (
             resp.status_code == 200
             and data.get("success", False)
             and data.get("health", {}).get("status") == "healthy"
         )
     except Exception:
-        _openclaw_available = False
-    _openclaw_check_time = now
-    return _openclaw_available
+        return False
 
 
 # ---------------------------------------------------------------------------
