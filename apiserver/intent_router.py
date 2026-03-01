@@ -24,7 +24,7 @@ logger = logging.getLogger("IntentRouter")
 ROUTER_MODEL = "gpt-4.1-nano"
 
 # 内置工具名称（非 MCP、非 Skill）
-BUILTIN_TOOLS = {"openclaw", "live2d"}
+BUILTIN_TOOLS = {"openclaw", "openclaw_tool", "live2d"}
 
 
 @dataclass
@@ -60,7 +60,7 @@ def _build_tool_list() -> str:
 
     # 内置工具
     lines.append("## 系统内置")
-    lines.append("- openclaw: 联网搜索、浏览器操作、代码执行")
+    lines.append("- openclaw: 联网搜索、网页浏览、代码执行、文件操作、定时任务等（任何需要联网、查资料、搜索的场景都需要）")
     lines.append("- live2d: 虚拟形象表情动作")
     lines.append("")
 
