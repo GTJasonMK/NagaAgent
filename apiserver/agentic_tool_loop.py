@@ -185,20 +185,23 @@ async def _check_openclaw_available() -> bool:
         _openclaw_start_attempted = True
         logger.info("[AgenticLoop] OpenClaw gateway 不可用，尝试自动启动...")
         try:
-            resp = await client.post(f"{agent_base}/openclaw/gateway/start", timeout=30.0)
+            resp = await client.post(f"{agent_base}/openclaw/gateway/start", timeout=45.0)
             if resp.status_code == 200:
-                logger.info("[AgenticLoop] OpenClaw gateway 启动请求已发送，等待就绪...")
-                # 轮询等待 gateway 就绪（最多 15s）
-                for _ in range(5):
-                    await asyncio.sleep(3)
-                    if await _probe_openclaw_health(client, agent_base):
-                        _openclaw_available = True
-                        logger.info("[AgenticLoop] OpenClaw gateway 已就绪")
-                        break
-                if not _openclaw_available:
-                    logger.warning("[AgenticLoop] OpenClaw gateway 启动超时，仍不可用")
+                start_result = resp.json()
+                # start_gateway 内部已经等待并检查了连通性
+                if start_result.get("success"):
+                    logger.info("[AgenticLoop] OpenClaw gateway 启动成功")
+                    # 再确认一次 health
+                    _openclaw_available = await _probe_openclaw_health(client, agent_base)
+                    if not _openclaw_available:
+                        # start 说成功但 health 还没好，短暂等待
+                        await asyncio.sleep(2)
+                        _openclaw_available = await _probe_openclaw_health(client, agent_base)
+                else:
+                    msg = start_result.get("message", "未知原因")
+                    logger.warning(f"[AgenticLoop] OpenClaw gateway 启动失败: {msg}")
             else:
-                logger.warning(f"[AgenticLoop] OpenClaw gateway 启动失败: HTTP {resp.status_code}")
+                logger.warning(f"[AgenticLoop] OpenClaw gateway 启动请求失败: HTTP {resp.status_code}")
         except Exception as e:
             logger.warning(f"[AgenticLoop] OpenClaw gateway 自动启动异常: {e}")
 
