@@ -406,8 +406,20 @@ async def _execute_openclaw_tool_call(call: Dict[str, Any]) -> Dict[str, Any]:
             result_content = result_data.get("result", result_data)
             if isinstance(result_content, dict) and "result" in result_content:
                 result_content = result_content["result"]
+
+            # 检查 OpenClaw 工具级别的 isError 标记
+            if isinstance(result_content, dict) and result_content.get("isError"):
+                readable = _extract_openclaw_tool_result(result_content)
+                logger.error(f"[AgenticLoop] OpenClaw工具内部错误: {tool_name}, result={readable[:300]}")
+                return {
+                    "tool_call": call, "result": f"工具执行错误: {readable}",
+                    "status": "error", "service_name": "openclaw_tool", "tool_name": tool_name,
+                }
+
             readable = _extract_openclaw_tool_result(result_content)
-            logger.info(f"[AgenticLoop] OpenClaw直接工具调用完成: {tool_name} 耗时 {elapsed:.2f}s")
+            logger.info(f"[AgenticLoop] OpenClaw直接工具调用完成: {tool_name} 耗时 {elapsed:.2f}s, 结果长度={len(readable)}")
+            logger.debug(f"[AgenticLoop] OpenClaw工具原始返回: {json.dumps(result_content, ensure_ascii=False)[:500]}")
+            logger.debug(f"[AgenticLoop] OpenClaw工具提取结果: {readable[:300]}")
             return {
                 "tool_call": call, "result": readable,
                 "status": "success", "service_name": "openclaw_tool", "tool_name": tool_name,
@@ -433,18 +445,37 @@ def _extract_openclaw_tool_result(result: Any) -> str:
     if isinstance(result, dict):
         # 标准格式: { content: [{ type: "text", text: "..." }] }
         content = result.get("content", [])
-        if isinstance(content, list):
+        if isinstance(content, list) and content:
             texts = []
             for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    texts.append(item.get("text", ""))
+                if isinstance(item, dict):
+                    if item.get("type") == "text":
+                        texts.append(item.get("text", ""))
+                    elif "text" in item:
+                        texts.append(str(item["text"]))
+                elif isinstance(item, str):
+                    texts.append(item)
             if texts:
                 return "\n".join(texts)
         # 备选: 直接有 text 字段
         if "text" in result:
             return str(result["text"])
+        # 备选: 有 error/message 字段（OpenClaw 错误响应）
+        if "error" in result:
+            return f"错误: {result['error']}"
+        if "message" in result:
+            return str(result["message"])
         # 兜底: JSON dump
         return json.dumps(result, ensure_ascii=False)
+    if isinstance(result, list):
+        # 直接是 content 数组
+        texts = []
+        for item in result:
+            if isinstance(item, dict) and item.get("type") == "text":
+                texts.append(item.get("text", ""))
+            elif isinstance(item, str):
+                texts.append(item)
+        return "\n".join(texts) if texts else json.dumps(result, ensure_ascii=False)
     return str(result)
 
 
