@@ -92,9 +92,17 @@ def _build_tool_list() -> str:
 
 # ── 路由 prompt ──
 
-ROUTER_SYSTEM_PROMPT = """根据对话上下文，判断回复用户最新消息需要调用哪些工具。仅输出工具名称，每行一个，无需解释。如果不需要任何工具（闲聊/简单问答），只输出 none。
+ROUTER_SYSTEM_PROMPT = """根据用户最新消息，判断需要调用哪些工具。仅输出工具名称，每行一个。不需要工具时只输出 none。
 
-{tool_list}"""
+{tool_list}
+
+示例:
+用户: 帮我搜一下今天黄金价格 → openclaw
+用户: 这关怎么打 → openclaw
+game_guide
+用户: 你好呀 → none
+用户: 帮我看看屏幕 → screen_vision
+用户: 搜一下最近的新闻然后总结 → openclaw"""
 
 
 def _build_router_messages(messages: List[Dict], user_msg: str) -> List[Dict]:
@@ -181,8 +189,11 @@ def _parse_router_output(output: str) -> RouteResult:
         pass
 
     for line in lines:
-        # 去除可能的列表标记
-        name = line.lstrip("-").strip()
+        # 去除可能的列表标记、箭头格式（示例污染）
+        name = line.lstrip("-•*").strip()
+        # 处理 nano 可能输出的 "→ openclaw" 或 "用户: xxx → openclaw" 格式
+        if "→" in name:
+            name = name.split("→")[-1].strip()
         if name == "none":
             continue
 
