@@ -34,7 +34,10 @@ async def text_to_speech(request: Request):
         output_file_path = await _generate_audio(text, voice, response_format, speed)
         return FileResponse(output_file_path, media_type=mime_type, filename="speech.mp3")
     except Exception as e:
-        with open('voice_server_error.log', 'a') as f:
+        from system.config import get_data_dir
+        error_log = get_data_dir() / "logs" / "voice_server_error.log"
+        error_log.parent.mkdir(parents=True, exist_ok=True)
+        with open(error_log, 'a') as f:
             f.write(f"Error at {__name__}: {str(e)}\n")
             import traceback
             traceback.print_exc(file=f)

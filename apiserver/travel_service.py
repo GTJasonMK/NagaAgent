@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 # ── 数据目录 ────────────────────────────────────
 
-TRAVEL_DIR = Path("logs/travel")
+from system.config import get_data_dir
+TRAVEL_DIR = get_data_dir() / "travel"
 TRAVEL_DIR.mkdir(parents=True, exist_ok=True)
 
 

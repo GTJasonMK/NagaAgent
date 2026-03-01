@@ -34,7 +34,8 @@ class VoiceIntegration:
         self.tts_semaphore = threading.Semaphore(2)  # 限制TTS请求并发数为2
         
         # 音频文件存储目录
-        self.audio_temp_dir = Path("logs/audio_temp")
+        from system.config import get_data_dir
+        self.audio_temp_dir = get_data_dir() / "audio_temp"
         self.audio_temp_dir.mkdir(parents=True, exist_ok=True)
         
         # 流式处理状态
